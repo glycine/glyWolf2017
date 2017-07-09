@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="src" path="src/java"/>
+	<classpathentry kind="src" path="src/resources"/>
+	<classpathentry kind="con" path="org.eclipse.buildship.core.gradleclasspathcontainer"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-1.8/"/>
+	<classpathentry kind="lib" path="C:/Users/glycine/.gradle/caches/modules-2/files-2.1/net.arnx/jsonic/1.3.10/98e8a1f25aa40ed92ff2ecca4d1301d48b552452/jsonic-1.3.10.jar" sourcepath="C:/Users/glycine/.gradle/caches/modules-2/files-2.1/net.arnx/jsonic/1.3.10/16f2f5d2b64e74c8535f8295fd357cd6152c9239/jsonic-1.3.10-sources.jar"/>
+	<classpathentry kind="lib" path="C:/Users/glycine/.gradle/caches/modules-2/files-2.1/org.apache.commons/commons-lang3/3.4/5fe28b9518e58819180a43a850fbc0dd24b7c050/commons-lang3-3.4.jar" sourcepath="C:/Users/glycine/.gradle/caches/modules-2/files-2.1/org.apache.commons/commons-lang3/3.4/b49dafc9cfef24c356827f322e773e7c26725dd2/commons-lang3-3.4-sources.jar"/>
+	<classpathentry kind="lib" path="C:/Users/glycine/eclipseWorkspace/glyAiWolf/libs/aiwolf-client.jar">
+		<attributes>
+			<attribute name="javadoc_location" value="jar:platform:/resource/glyAiWolf/docs/aiwolf-docs-ver0.4.6.zip!/docs"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="C:/Users/glycine/eclipseWorkspace/glyAiWolf/libs/aiwolf-common.jar">
+		<attributes>
+			<attribute name="javadoc_location" value="jar:platform:/resource/glyAiWolf/docs/aiwolf-docs-ver0.4.6.zip!/docs"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="C:/Users/glycine/eclipseWorkspace/glyAiWolf/libs/aiwolf-server.jar"/>
+	<classpathentry kind="lib" path="C:/Users/glycine/eclipseWorkspace/glyAiWolf/libs/aiwolf-viewer.jar"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>
