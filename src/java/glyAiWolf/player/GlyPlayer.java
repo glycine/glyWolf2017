@@ -68,7 +68,7 @@ public class GlyPlayer implements Player {
 			break;
 		case VILLAGER:
 		default:
-			this.player = new BasePlayer();
+			this.player = new VillagerPlayer();
 			break;
 		case WEREWOLF:
 			this.player = new BasePlayer();

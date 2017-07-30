@@ -9,7 +9,7 @@ import org.aiwolf.common.data.Role;
 /**
  * 狩人用のクラス．護衛のみ実装．残りは村人と共通．
  * 
- * 
+ * TODO: CO関係の実装
  * 
  * @author "Haruhisa Ishida(haruhisa.ishida@gmail.com)"
  *

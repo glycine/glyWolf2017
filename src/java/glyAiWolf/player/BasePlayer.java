@@ -2,10 +2,12 @@ package glyAiWolf.player;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.LinkedBlockingDeque;
 
 import org.aiwolf.client.lib.ComingoutContentBuilder;
@@ -30,7 +32,10 @@ public class BasePlayer implements Player {
 	protected GameInfo latestGameInfo;
 	// 今回のゲームのgameSetting, initialize時にコピーし，後はそのまま
 	protected GameSetting gameSetting;
-	protected BlockingDeque<Talk> processedTalks = new LinkedBlockingDeque<>();
+	// 処理した他プレイヤーの発話リスト
+	protected Deque<Talk> processedTalks = new ConcurrentLinkedDeque<>();
+	// 発話予定リスト．発話すれば順に消えていく
+	protected Deque<Content> myTalks = new ConcurrentLinkedDeque<>();
 	// 各プレイヤーの各役職の可能性
 	protected double[][] rolePossibility;
 	// 各プレイヤーの各プレイヤーに対する行動行列
@@ -308,19 +313,32 @@ public class BasePlayer implements Player {
 	 */
 	@Override
 	public String talk() {
-		int myIndex = this.latestGameInfo.getAgent().getAgentIdx() - 1;
-
-		// 自分自身の役職をCOしていなければ，coする
-		if (this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()] == 0) {
-			this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()]++;
-			Agent me = this.latestGameInfo.getAgent();
-			Role coRole = this.latestGameInfo.getRole();
-			ContentBuilder contentBuilder = new ComingoutContentBuilder(me, coRole);
-			return contentBuilder.toString();
+		System.err.println("BasePlayer: myTalks.size: " + this.myTalks.size());
+		if (this.myTalks.isEmpty()) {
+			Content content = new Content(new SkipContentBuilder());
+			return content.toString();
+		} else {
+			Content talk = this.myTalks.pop();
+			return talk.getText();
 		}
 
-		ContentBuilder contentBuilder = new SkipContentBuilder();
-		return contentBuilder.toString();
+		/*
+		 * int myIndex = this.latestGameInfo.getAgent().getAgentIdx() - 1;
+		 * 
+		 * // 自分自身の役職をCOしていなければ，coする
+		 * if (this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()] ==
+		 * 0) {
+		 * this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()]++;
+		 * Agent me = this.latestGameInfo.getAgent();
+		 * Role coRole = this.latestGameInfo.getRole();
+		 * ContentBuilder contentBuilder = new ComingoutContentBuilder(me,
+		 * coRole);
+		 * return contentBuilder.toString();
+		 * }
+		 * 
+		 * ContentBuilder contentBuilder = new SkipContentBuilder();
+		 * return contentBuilder.toString();
+		 */
 	}
 
 	/**
@@ -336,7 +354,6 @@ public class BasePlayer implements Player {
 				newTalks.addFirst(talk);
 			}
 		}
-		System.err.println("newTalksSize: " + newTalks.size());
 		while (!newTalks.isEmpty()) {
 			Talk talk = newTalks.pollFirst();
 			handleTalk(talk);
