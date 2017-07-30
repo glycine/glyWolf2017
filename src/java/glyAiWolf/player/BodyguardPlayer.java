@@ -3,6 +3,8 @@ package glyAiWolf.player;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.aiwolf.client.lib.ComingoutContentBuilder;
+import org.aiwolf.client.lib.Content;
 import org.aiwolf.common.data.Agent;
 import org.aiwolf.common.data.Role;
 
@@ -15,6 +17,14 @@ import org.aiwolf.common.data.Role;
  *
  */
 public class BodyguardPlayer extends BasePlayer {
+	@Override
+	public void dayStart() {
+		super.dayStart();
+		// 村人とCOする
+		Content content = new Content(new ComingoutContentBuilder(this.latestGameInfo.getAgent(), Role.VILLAGER));
+		this.myTalks.addLast(content);
+	}
+
 	/**
 	 * 護衛対象を決定する．
 	 * ロジックとしては，生きている人の中で，占い師らしい人->霊媒師らしい人->村人らしい人の順序で護衛する
@@ -22,7 +32,6 @@ public class BodyguardPlayer extends BasePlayer {
 	 */
 	@Override
 	public Agent guard() {
-
 		List<Agent> probSeers = new ArrayList<>();
 		List<Agent> probMediums = new ArrayList<>();
 		List<Agent> probVillagers = new ArrayList<>();

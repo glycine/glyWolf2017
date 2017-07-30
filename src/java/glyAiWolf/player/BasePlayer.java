@@ -42,6 +42,25 @@ public class BasePlayer implements Player {
 	protected int[][][] talkMatrix;
 
 	/**
+	 * rolePossibility行列に基づいて，agentのRoleを推測するもの
+	 * 
+	 * @param agent
+	 * @return
+	 */
+	protected Role assumeRole(Agent agent) {
+		int agentIndex = agent.getAgentIdx() - 1;
+		Role result = null;
+		double prob = -1.0;
+		for (Role role : Role.values()) {
+			if (prob < this.rolePossibility[agentIndex][role.ordinal()]) {
+				prob = this.rolePossibility[agentIndex][role.ordinal()];
+				result = role;
+			}
+		}
+		return result;
+	}
+
+	/**
 	 * BasePlayerでは実装しない
 	 */
 	@Override
@@ -49,9 +68,23 @@ public class BasePlayer implements Player {
 		return null;
 	}
 
+	/**
+	 * 与えられたagentリストからランダムに選択して返す
+	 * 
+	 * @param agents
+	 * @return
+	 */
+	protected Agent choiceAgent(List<Agent> agents) {
+		if (agents == null || agents.isEmpty()) {
+			return null;
+		}
+		int index = (int) Math.floor(Math.random() * (double) agents.size());
+		return agents.get(index);
+	}
+
 	@Override
 	public void dayStart() {
-		// TODO 自動生成されたメソッド・スタブ
+
 	}
 
 	/**
@@ -65,20 +98,6 @@ public class BasePlayer implements Player {
 	@Override
 	public void finish() {
 		// TODO 自動生成されたメソッド・スタブ
-	}
-
-	protected int[][][] genTalkMatrix(GameInfo gameInfo, GameSetting gameSetting) {
-		int playerNum = gameSetting.getPlayerNum();
-		int topicNum = Topic.values().length;
-		int[][][] talkMatrix = new int[playerNum][playerNum][topicNum];
-		for (int i = 0; i < talkMatrix.length; ++i) {
-			for (int j = 0; j < talkMatrix[i].length; ++j) {
-				for (int k = 0; k < talkMatrix[i][j].length; ++k) {
-					talkMatrix[i][j][k] = 0;
-				}
-			}
-		}
-		return talkMatrix;
 	}
 
 	/**
@@ -128,6 +147,20 @@ public class BasePlayer implements Player {
 		}
 
 		return rolePossibility;
+	}
+
+	protected int[][][] genTalkMatrix(GameInfo gameInfo, GameSetting gameSetting) {
+		int playerNum = gameSetting.getPlayerNum();
+		int topicNum = Topic.values().length;
+		int[][][] talkMatrix = new int[playerNum][playerNum][topicNum];
+		for (int i = 0; i < talkMatrix.length; ++i) {
+			for (int j = 0; j < talkMatrix[i].length; ++j) {
+				for (int k = 0; k < talkMatrix[i][j].length; ++k) {
+					talkMatrix[i][j][k] = 0;
+				}
+			}
+		}
+		return talkMatrix;
 	}
 
 	@Override
@@ -209,8 +242,6 @@ public class BasePlayer implements Player {
 			double opposeProb = 1.0 - targetProb;
 			double diff = Math.abs(targetProb - opposeProb);
 
-			System.err.println("seerProb: " + seerProb + ", targetProb: " + targetProb + ", opposeProb: " + opposeProb
-					+ ", diff: " + diff);
 			for (Role targetRole : targetRoles) {
 				this.rolePossibility[targetIndex][targetRole.ordinal()] += opposeProb
 						* this.rolePossibility[targetIndex][targetRole.ordinal()] / targetProb * seerProb;
@@ -300,6 +331,9 @@ public class BasePlayer implements Player {
 	}
 
 	protected void showRoleProbability() {
+		if (!this.latestGameInfo.getRole().equals(Role.POSSESSED)) {
+			return;
+		}
 		for (double[] row : rolePossibility) {
 			for (double elem : row) {
 				System.err.print(elem + ", ");
@@ -309,18 +343,17 @@ public class BasePlayer implements Player {
 	}
 
 	/**
-	 * 発言処理．今のところは無発言
+	 * 発言処理．queueにたまった発言リストを処理．なくなればskipする
 	 */
 	@Override
 	public String talk() {
 		System.err.println("BasePlayer: myTalks.size: " + this.myTalks.size());
 		if (this.myTalks.isEmpty()) {
-			Content content = new Content(new SkipContentBuilder());
-			return content.toString();
-		} else {
-			Content talk = this.myTalks.pop();
-			return talk.getText();
+			Content skip = new Content(new SkipContentBuilder());
+			return skip.toString();
 		}
+		Content content = this.myTalks.pop();
+		return content.getText();
 
 		/*
 		 * int myIndex = this.latestGameInfo.getAgent().getAgentIdx() - 1;
@@ -387,38 +420,5 @@ public class BasePlayer implements Player {
 	@Override
 	public String whisper() {
 		return null;
-	}
-
-	/**
-	 * rolePossibility行列に基づいて，agentのRoleを推測するもの
-	 * 
-	 * @param agent
-	 * @return
-	 */
-	protected Role assumeRole(Agent agent) {
-		int agentIndex = agent.getAgentIdx() - 1;
-		Role result = null;
-		double prob = -1.0;
-		for (Role role : Role.values()) {
-			if (prob < this.rolePossibility[agentIndex][role.ordinal()]) {
-				prob = this.rolePossibility[agentIndex][role.ordinal()];
-				result = role;
-			}
-		}
-		return result;
-	}
-
-	/**
-	 * 与えられたagentリストからランダムに選択して返す
-	 * 
-	 * @param agents
-	 * @return
-	 */
-	protected Agent choiceAgent(List<Agent> agents) {
-		if (agents == null || agents.isEmpty()) {
-			return null;
-		}
-		int index = (int) Math.floor(Math.random() * (double) agents.size());
-		return agents.get(index);
 	}
 }

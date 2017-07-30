@@ -49,7 +49,7 @@ public class GlyPlayer implements Player {
 	public void initialize(GameInfo gameInfo, GameSetting gameSetting) {
 		switch (gameInfo.getRole()) {
 		case BODYGUARD:
-			this.player = new BasePlayer();
+			this.player = new BodyguardPlayer();
 			break;
 		case FOX:
 			this.player = new BasePlayer();
@@ -58,13 +58,13 @@ public class GlyPlayer implements Player {
 			this.player = new BasePlayer();
 			break;
 		case MEDIUM:
-			this.player = new BasePlayer();
+			this.player = new MediumPlayer();
 			break;
 		case POSSESSED:
-			this.player = new BasePlayer();
+			this.player = new PossessedPlayer();
 			break;
 		case SEER:
-			this.player = new BasePlayer();
+			this.player = new SeerPlayer();
 			break;
 		case VILLAGER:
 		default:
