@@ -8,13 +8,16 @@ import java.util.TreeMap;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.LinkedBlockingDeque;
 
+import org.aiwolf.client.lib.ComingoutContentBuilder;
 import org.aiwolf.client.lib.Content;
+import org.aiwolf.client.lib.ContentBuilder;
+import org.aiwolf.client.lib.SkipContentBuilder;
+import org.aiwolf.client.lib.Topic;
 import org.aiwolf.common.data.Agent;
 import org.aiwolf.common.data.Player;
 import org.aiwolf.common.data.Role;
 import org.aiwolf.common.data.Species;
 import org.aiwolf.common.data.Talk;
-import org.aiwolf.common.data.Team;
 import org.aiwolf.common.net.GameInfo;
 import org.aiwolf.common.net.GameSetting;
 
@@ -23,11 +26,15 @@ public class BasePlayer implements Player {
 	protected List<Role> werewolfSide = new ArrayList<>();
 	// 日ごとのgameInfo
 	protected Map<Integer, GameInfo> gameInfos = new TreeMap<>();
+	// 最新のgameInfo
+	protected GameInfo latestGameInfo;
 	// 今回のゲームのgameSetting, initialize時にコピーし，後はそのまま
 	protected GameSetting gameSetting;
 	protected BlockingDeque<Talk> processedTalks = new LinkedBlockingDeque<>();
 	// 各プレイヤーの各役職の可能性
 	protected double[][] rolePossibility;
+	// 各プレイヤーの各プレイヤーに対する行動行列
+	protected int[][][] talkMatrix;
 
 	/**
 	 * BasePlayerでは実装しない
@@ -53,6 +60,20 @@ public class BasePlayer implements Player {
 	@Override
 	public void finish() {
 		// TODO 自動生成されたメソッド・スタブ
+	}
+
+	protected int[][][] genTalkMatrix(GameInfo gameInfo, GameSetting gameSetting) {
+		int playerNum = gameSetting.getPlayerNum();
+		int topicNum = Topic.values().length;
+		int[][][] talkMatrix = new int[playerNum][playerNum][topicNum];
+		for (int i = 0; i < talkMatrix.length; ++i) {
+			for (int j = 0; j < talkMatrix[i].length; ++j) {
+				for (int k = 0; k < talkMatrix[i][j].length; ++k) {
+					talkMatrix[i][j][k] = 0;
+				}
+			}
+		}
+		return talkMatrix;
 	}
 
 	/**
@@ -209,32 +230,6 @@ public class BasePlayer implements Player {
 	}
 
 	/**
-	 * 配信されるgameInfoとgameSettingを保存
-	 */
-	@Override
-	public void initialize(GameInfo gameInfo, GameSetting gameSetting) {
-		for (Role role : Role.values()) {
-			System.err.println(role + ", " + role.getSpecies() + ", " + role.getTeam());
-		}
-		// 前の情報を引き継がないようにするためクリア
-		this.gameInfos.clear();
-		this.processedTalks.clear();
-
-		// 値のコピー
-		this.gameInfos.put(gameInfo.getDay(), gameInfo);
-		this.gameSetting = gameSetting.clone();
-		// 各役職の可能性の行列を作成する
-		this.rolePossibility = genRolePossibility(gameInfo, gameSetting);
-
-		for (double[] row : rolePossibility) {
-			for (double elem : row) {
-				System.err.print(elem + ", ");
-			}
-			System.err.println("");
-		}
-	}
-
-	/**
 	 * 他プレイヤーのtalkを処理する
 	 * 
 	 * @param talk
@@ -278,10 +273,54 @@ public class BasePlayer implements Player {
 		}
 	}
 
+	/**
+	 * 配信されるgameInfoとgameSettingを保存
+	 */
+	@Override
+	public void initialize(GameInfo gameInfo, GameSetting gameSetting) {
+		// 前の情報を引き継がないようにするためクリア
+		this.gameInfos.clear();
+		this.processedTalks.clear();
+
+		// 値のコピー
+		this.gameInfos.put(gameInfo.getDay(), gameInfo);
+		this.latestGameInfo = gameInfo;
+		this.gameSetting = gameSetting.clone();
+		// 各役職の可能性の行列を作成する
+		this.rolePossibility = genRolePossibility(gameInfo, gameSetting);
+		this.talkMatrix = genTalkMatrix(gameInfo, gameSetting);
+
+		// デバッグ用の出力
+		this.showRoleProbability();
+	}
+
+	protected void showRoleProbability() {
+		for (double[] row : rolePossibility) {
+			for (double elem : row) {
+				System.err.print(elem + ", ");
+			}
+			System.err.println("");
+		}
+	}
+
+	/**
+	 * 発言処理．今のところは無発言
+	 */
 	@Override
 	public String talk() {
-		// TODO 自動生成されたメソッド・スタブ
-		return null;
+		int myIndex = this.latestGameInfo.getAgent().getAgentIdx() - 1;
+
+		// 自分自身の役職をCOしていなければ，coする
+		if (this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()] == 0) {
+			this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()]++;
+			Agent me = this.latestGameInfo.getAgent();
+			Role coRole = this.latestGameInfo.getRole();
+			ContentBuilder contentBuilder = new ComingoutContentBuilder(me, coRole);
+			return contentBuilder.toString();
+		}
+
+		ContentBuilder contentBuilder = new SkipContentBuilder();
+		return contentBuilder.toString();
 	}
 
 	/**
@@ -290,6 +329,7 @@ public class BasePlayer implements Player {
 	@Override
 	public void update(GameInfo gameInfo) {
 		this.gameInfos.put(gameInfo.getDay(), gameInfo);
+		this.latestGameInfo = gameInfo;
 		BlockingDeque<Talk> newTalks = new LinkedBlockingDeque<>();
 		for (Talk talk : gameInfo.getTalkList()) {
 			if (processedTalks.isEmpty() || !talk.equals(processedTalks.getLast())) {
@@ -302,32 +342,26 @@ public class BasePlayer implements Player {
 			handleTalk(talk);
 			this.processedTalks.addFirst(talk);
 		}
-		System.err.println("processedTalksSize: " + processedTalks.size());
-		for (double[] row : rolePossibility) {
-			for (double elem : row) {
-				System.err.print(elem + ", ");
-			}
-			System.err.println("");
-		}
 
+		this.showRoleProbability();
 	}
 
 	/**
-	 * COなどの発言に基づくupdate
-	 * 
-	 * @param agent
-	 * @param role
+	 * 投票行動．生きているAgentのうち，最も狼らしいAgentに投票する．
 	 */
-	protected double[][] updateRolePossibility(double[][] rolePossiblity, Agent agent, Role role) {
-		agent.getAgentIdx();
-
-		return rolePossibility;
-	}
-
 	@Override
 	public Agent vote() {
-		// TODO 自動生成されたメソッド・スタブ
-		return null;
+		List<Agent> aliveAgents = this.latestGameInfo.getAliveAgentList();
+		double wolfProb = 0.0;
+		Agent result = this.latestGameInfo.getAgent();
+		for (Agent agent : aliveAgents) {
+			int agentIndex = agent.getAgentIdx() - 1;
+			if (this.rolePossibility[agentIndex][Role.WEREWOLF.ordinal()] > wolfProb) {
+				wolfProb = this.rolePossibility[agentIndex][Role.WEREWOLF.ordinal()];
+				result = agent;
+			}
+		}
+		return result;
 	}
 
 	/**
@@ -338,4 +372,36 @@ public class BasePlayer implements Player {
 		return null;
 	}
 
+	/**
+	 * rolePossibility行列に基づいて，agentのRoleを推測するもの
+	 * 
+	 * @param agent
+	 * @return
+	 */
+	protected Role assumeRole(Agent agent) {
+		int agentIndex = agent.getAgentIdx() - 1;
+		Role result = null;
+		double prob = -1.0;
+		for (Role role : Role.values()) {
+			if (prob < this.rolePossibility[agentIndex][role.ordinal()]) {
+				prob = this.rolePossibility[agentIndex][role.ordinal()];
+				result = role;
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * 与えられたagentリストからランダムに選択して返す
+	 * 
+	 * @param agents
+	 * @return
+	 */
+	protected Agent choiceAgent(List<Agent> agents) {
+		if (agents == null || agents.isEmpty()) {
+			return null;
+		}
+		int index = (int) Math.floor(Math.random() * (double) agents.size());
+		return agents.get(index);
+	}
 }
