@@ -6,13 +6,9 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.LinkedBlockingDeque;
 
-import org.aiwolf.client.lib.ComingoutContentBuilder;
 import org.aiwolf.client.lib.Content;
-import org.aiwolf.client.lib.ContentBuilder;
 import org.aiwolf.client.lib.SkipContentBuilder;
 import org.aiwolf.client.lib.Topic;
 import org.aiwolf.common.data.Agent;
@@ -24,8 +20,6 @@ import org.aiwolf.common.net.GameInfo;
 import org.aiwolf.common.net.GameSetting;
 
 public class BasePlayer implements Player {
-	protected List<Role> villagerSide = new ArrayList<>();
-	protected List<Role> werewolfSide = new ArrayList<>();
 	// 日ごとのgameInfo
 	protected Map<Integer, GameInfo> gameInfos = new TreeMap<>();
 	// 最新のgameInfo
@@ -331,9 +325,14 @@ public class BasePlayer implements Player {
 	}
 
 	protected void showRoleProbability() {
-		if (!this.latestGameInfo.getRole().equals(Role.POSSESSED)) {
+		if(this.latestGameInfo.getAgent().getAgentIdx() != 5){
 			return;
 		}
+
+		for (Role role : Role.values()) {
+			System.err.print(role + ", ");
+		}
+		System.err.println("");
 		for (double[] row : rolePossibility) {
 			for (double elem : row) {
 				System.err.print(elem + ", ");
@@ -347,31 +346,12 @@ public class BasePlayer implements Player {
 	 */
 	@Override
 	public String talk() {
-		System.err.println("BasePlayer: myTalks.size: " + this.myTalks.size());
 		if (this.myTalks.isEmpty()) {
 			Content skip = new Content(new SkipContentBuilder());
 			return skip.toString();
 		}
 		Content content = this.myTalks.pop();
 		return content.getText();
-
-		/*
-		 * int myIndex = this.latestGameInfo.getAgent().getAgentIdx() - 1;
-		 * 
-		 * // 自分自身の役職をCOしていなければ，coする
-		 * if (this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()] ==
-		 * 0) {
-		 * this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()]++;
-		 * Agent me = this.latestGameInfo.getAgent();
-		 * Role coRole = this.latestGameInfo.getRole();
-		 * ContentBuilder contentBuilder = new ComingoutContentBuilder(me,
-		 * coRole);
-		 * return contentBuilder.toString();
-		 * }
-		 * 
-		 * ContentBuilder contentBuilder = new SkipContentBuilder();
-		 * return contentBuilder.toString();
-		 */
 	}
 
 	/**
@@ -381,16 +361,16 @@ public class BasePlayer implements Player {
 	public void update(GameInfo gameInfo) {
 		this.gameInfos.put(gameInfo.getDay(), gameInfo);
 		this.latestGameInfo = gameInfo;
-		BlockingDeque<Talk> newTalks = new LinkedBlockingDeque<>();
+		Deque<Talk> newTalks = new ConcurrentLinkedDeque<>();
 		for (Talk talk : gameInfo.getTalkList()) {
 			if (processedTalks.isEmpty() || !talk.equals(processedTalks.getLast())) {
-				newTalks.addFirst(talk);
+				newTalks.addLast(talk);
 			}
 		}
 		while (!newTalks.isEmpty()) {
 			Talk talk = newTalks.pollFirst();
 			handleTalk(talk);
-			this.processedTalks.addFirst(talk);
+			this.processedTalks.addLast(talk);
 		}
 
 		this.showRoleProbability();

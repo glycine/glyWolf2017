@@ -71,7 +71,7 @@ public class GlyPlayer implements Player {
 			this.player = new VillagerPlayer();
 			break;
 		case WEREWOLF:
-			this.player = new BasePlayer();
+			this.player = new WerewolfPlayer();
 			break;
 		}
 		player.initialize(gameInfo, gameSetting);
