@@ -24,12 +24,14 @@ public class MediumPlayer extends BasePlayer {
 	@Override
 	public void dayStart() {
 		super.dayStart();
-		// 自身の役職をCOする
 		Agent me = this.latestGameInfo.getAgent();
-		int myIndex = me.getAgentIdx() - 1;
-		Content content = new Content(new ComingoutContentBuilder(me, this.latestGameInfo.getRole()));
-		this.myTalks.add(content);
-		this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()]++;
+		if (this.latestGameInfo.getDay() == 1) {
+			// 自身の役職をCOする
+			int myIndex = me.getAgentIdx() - 1;
+			Content content = new Content(new ComingoutContentBuilder(me, this.latestGameInfo.getRole()));
+			this.myTalks.add(content);
+			this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()]++;
+		}
 	}
 
 	/**

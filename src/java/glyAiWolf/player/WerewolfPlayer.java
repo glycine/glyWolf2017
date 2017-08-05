@@ -66,6 +66,9 @@ public class WerewolfPlayer extends BasePlayer {
 			if (Role.SEER.equals(this.fakeCoRoles[me.getAgentIdx() - 1])) {
 				// 占いの行動を行う
 				this.actFakeSeer();
+			} else if (Role.MEDIUM.equals(this.fakeCoRoles[me.getAgentIdx() - 1])) {
+				// 霊媒師の行動を行う
+				// TODO 偽霊媒の実装
 			}
 		}
 	}

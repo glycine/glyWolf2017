@@ -9,7 +9,7 @@ public class VillagerPlayer extends BasePlayer {
 	@Override
 	public void dayStart() {
 		super.dayStart();
-		if (this.latestGameInfo.getDay() > 0) {
+		if (this.latestGameInfo.getDay() == 1) {
 			// 自身のCO発言を追加する
 			Agent me = this.latestGameInfo.getAgent();
 			int myIndex = me.getAgentIdx() - 1;
@@ -18,6 +18,5 @@ public class VillagerPlayer extends BasePlayer {
 			this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()]++;
 		}
 	}
-	
-	
+
 }

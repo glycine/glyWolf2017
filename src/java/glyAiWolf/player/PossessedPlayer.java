@@ -27,13 +27,15 @@ public class PossessedPlayer extends BasePlayer {
 	@Override
 	public void dayStart() {
 		super.dayStart();
-		// 0日目と1日目以降で処理を分ける
-		if (this.latestGameInfo.getDay() > 0) {
-			Content content = new Content(new ComingoutContentBuilder(this.latestGameInfo.getAgent(), Role.SEER));
+		Agent me = this.latestGameInfo.getAgent();
+
+		// 1日目に，偽の占いCOをする
+		if (this.latestGameInfo.getDay() == 1) {
+			Content content = new Content(new ComingoutContentBuilder(me, Role.SEER));
 			this.myTalks.add(content);
-
-			Agent me = this.latestGameInfo.getAgent();
-
+		}
+		// 1日目以降は，偽の占い結果を出し続ける
+		if (this.latestGameInfo.getDay() >= 1) {
 			List<Agent> agents = Arrays.asList(
 					this.latestGameInfo.getAliveAgentList().stream().filter(x -> x.getAgentIdx() != me.getAgentIdx())
 							.filter(y -> this.talkMatrix[me.getAgentIdx() - 1][y.getAgentIdx() - 1][Topic.DIVINED

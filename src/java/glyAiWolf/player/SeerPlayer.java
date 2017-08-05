@@ -26,11 +26,13 @@ public class SeerPlayer extends BasePlayer {
 	@Override
 	public void dayStart() {
 		super.dayStart();
-		Agent me = this.latestGameInfo.getAgent();
-		int myIndex = me.getAgentIdx() - 1;
-		Content content = new Content(new ComingoutContentBuilder(me, this.latestGameInfo.getRole()));
-		this.myTalks.add(content);
-		this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()]++;
+		if (this.latestGameInfo.getDay() == 1) {
+			Agent me = this.latestGameInfo.getAgent();
+			int myIndex = me.getAgentIdx() - 1;
+			Content content = new Content(new ComingoutContentBuilder(me, this.latestGameInfo.getRole()));
+			this.myTalks.add(content);
+			this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()]++;
+		}
 	}
 
 	/**
