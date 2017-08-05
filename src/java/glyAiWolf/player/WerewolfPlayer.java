@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import org.aiwolf.client.lib.ComingoutContentBuilder;
 import org.aiwolf.client.lib.Content;
 import org.aiwolf.client.lib.DivinedResultContentBuilder;
+import org.aiwolf.client.lib.IdentContentBuilder;
 import org.aiwolf.client.lib.SkipContentBuilder;
 import org.aiwolf.client.lib.Topic;
 import org.aiwolf.common.data.Agent;
@@ -68,7 +69,7 @@ public class WerewolfPlayer extends BasePlayer {
 				this.actFakeSeer();
 			} else if (Role.MEDIUM.equals(this.fakeCoRoles[me.getAgentIdx() - 1])) {
 				// 霊媒師の行動を行う
-				// TODO 偽霊媒の実装
+				this.actFakeMedium();
 			}
 		}
 	}
@@ -217,6 +218,22 @@ public class WerewolfPlayer extends BasePlayer {
 				// 昨夜襲撃が成功 -> 襲撃した人に対して人判定を出す
 				this.myTalks.addLast(new Content(
 						new DivinedResultContentBuilder(this.latestGameInfo.getAttackedAgent(), Species.HUMAN)));
+			}
+		}
+	}
+
+	/**
+	 * 偽の霊媒師を実行し，結果を発話する．
+	 * 狼の場合，仲間がわかっているので真実を言うことができる
+	 */
+	private void actFakeMedium() {
+		Agent executedAgent = this.latestGameInfo.getExecutedAgent();
+		if (executedAgent != null) {
+			if (this.fakeCoRoles[executedAgent.getAgentIdx() - 1] != null) {
+				// 狼だったので，狼判定出す
+				this.myTalks.addLast(new Content(new IdentContentBuilder(executedAgent, Species.WEREWOLF)));
+			} else {
+				this.myTalks.addLast(new Content(new IdentContentBuilder(executedAgent, Species.HUMAN)));
 			}
 		}
 
