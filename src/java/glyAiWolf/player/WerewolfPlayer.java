@@ -6,6 +6,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
+import org.aiwolf.client.lib.AttackContentBuilder;
 import org.aiwolf.client.lib.ComingoutContentBuilder;
 import org.aiwolf.client.lib.Content;
 import org.aiwolf.client.lib.DivinedResultContentBuilder;
@@ -26,6 +27,67 @@ public class WerewolfPlayer extends BasePlayer {
 	private Deque<Content> myWhispers = new ConcurrentLinkedDeque<>();
 	// 他の狼のfakeCO役職リスト．agentIndexで引く
 	private Role[] fakeCoRoles = null;
+	// 次に襲撃するつもりのAgent
+	private Agent[] nextAttackedAgents = null;
+
+	/**
+	 * 偽の霊媒師を実行し，結果を発話する．
+	 * 狼の場合，仲間がわかっているので真実を言うことができる
+	 */
+	private void actFakeMedium() {
+		Agent executedAgent = this.latestGameInfo.getExecutedAgent();
+		if (executedAgent != null) {
+			if (this.fakeCoRoles[executedAgent.getAgentIdx() - 1] != null) {
+				// 狼だったので，狼判定出す
+				this.myTalks.addLast(new Content(new IdentContentBuilder(executedAgent, Species.WEREWOLF)));
+			} else {
+				this.myTalks.addLast(new Content(new IdentContentBuilder(executedAgent, Species.HUMAN)));
+			}
+		}
+	}
+
+	/**
+	 * 偽の占いを実行し，結果を発話する．
+	 * ランダムで前日襲撃されたプレイヤーか，生きているプレイヤーからまだ占っていない人を対象として人間判定を出す
+	 */
+	private void actFakeSeer() {
+		if (this.latestGameInfo.getDay() == 0) {
+			// まだ占い結果は出せない
+			return;
+		}
+		Agent me = this.latestGameInfo.getAgent();
+		List<Agent> targets = Arrays.asList(this.latestGameInfo.getAliveAgentList().stream().filter(y -> !me.equals(y))
+				.filter(x -> this.talkMatrix[me.getAgentIdx() - 1][x.getAgentIdx() - 1][Topic.DIVINED.ordinal()] == 0)
+				.toArray(Agent[]::new));
+		if (targets.isEmpty()) {
+			// 全員占ったことがある-> 生きている人からランダムに人判定を出す
+			this.myTalks.addLast(new Content(new DivinedResultContentBuilder(
+					this.choiceAgent(this.latestGameInfo.getAliveAgentList()), Species.HUMAN)));
+		} else {
+			if (this.latestGameInfo.getAttackedAgent() == null) {
+				// 昨夜襲撃が失敗している -> 生きている人からランダムに人判定を出す
+				Agent target = this.choiceAgent(targets);
+				this.myTalks.addLast(new Content(new DivinedResultContentBuilder(target, Species.HUMAN)));
+			} else {
+				// 昨夜襲撃が成功 -> 襲撃した人に対して人判定を出す
+				this.myTalks.addLast(new Content(
+						new DivinedResultContentBuilder(this.latestGameInfo.getAttackedAgent(), Species.HUMAN)));
+			}
+		}
+	}
+
+	@Override
+	public Agent attack() {
+		Agent me = this.latestGameInfo.getAgent();
+		if (this.nextAttackedAgents[me.getAgentIdx() - 1] == null) {
+			// なぜか定まっていない．生きている人のうち，人狼以外からランダムに選択して返す
+			List<Agent> werewolfs = this.getWerewolfs();
+			return this.choiceAgent(Arrays.asList(this.latestGameInfo.getAliveAgentList().stream()
+					.filter(x -> !werewolfs.contains(x)).toArray(Agent[]::new)));
+		} else {
+			return this.nextAttackedAgents[me.getAgentIdx() - 1];
+		}
+	}
 
 	/**
 	 * fakeCoの状態をチェックする．
@@ -49,9 +111,22 @@ public class WerewolfPlayer extends BasePlayer {
 		return true;
 	}
 
+	private boolean checkNextAttackedAgentStatus() {
+		Agent me = this.latestGameInfo.getAgent();
+		if (this.nextAttackedAgents[me.getAgentIdx() - 1] == null) {
+			return false;
+		}
+		if (Arrays.asList(this.nextAttackedAgents).stream().filter(x -> x != null).distinct().count() != 1) {
+			return false;
+		}
+		return true;
+	}
+
 	@Override
 	public void dayStart() {
 		super.dayStart();
+		// nextAttackedAgents をクリアする
+		Arrays.fill(this.nextAttackedAgents, null);
 		Agent me = this.latestGameInfo.getAgent();
 		// COに関して
 		if (this.latestGameInfo.getDay() == 1) {
@@ -105,6 +180,42 @@ public class WerewolfPlayer extends BasePlayer {
 		}
 	}
 
+	/**
+	 * 次の襲撃対象を決定する．
+	 */
+	private void decideNextAttackedAgent() {
+		Agent me = this.latestGameInfo.getAgent();
+		// 他のプレイヤーの襲撃予定リストを作成する
+		List<Agent> targets = new ArrayList<>();
+		for (Agent werewolf : getWerewolfs()) {
+			if (me.getAgentIdx() == werewolf.getAgentIdx()) {
+				continue;
+			}
+			if (this.nextAttackedAgents[werewolf.getAgentIdx() - 1] != null) {
+				targets.add(this.nextAttackedAgents[werewolf.getAgentIdx() - 1]);
+			}
+		}
+		if (targets.isEmpty()) {
+			// 他のプレイヤーは襲撃予定を決めていない -> 自分で決めて，発案する
+			// 生きていて，狼サイドではなくて，村人の可能性が一番高いAgent
+			List<Agent> agents = Arrays.asList(this.latestGameInfo.getAliveAgentList().stream()
+					.filter(x -> !getWerewolfs().contains(x)).toArray(Agent[]::new));
+			Agent target = me;
+			for (Agent agent : agents) {
+				if (this.rolePossibility[target.getAgentIdx() - 1][Role.VILLAGER
+						.ordinal()] <= this.rolePossibility[agent.getAgentIdx() - 1][Role.VILLAGER.ordinal()]) {
+					target = agent;
+				}
+			}
+			this.nextAttackedAgents[me.getAgentIdx() - 1] = target;
+			this.myWhispers.addLast(new Content(new AttackContentBuilder(target)));
+		} else {
+			// とりあえず，同調する
+			this.nextAttackedAgents[me.getAgentIdx() - 1] = targets.get(0);
+			this.myWhispers.addLast(new Content(new AttackContentBuilder(targets.get(0))));
+		}
+	}
+
 	private void detectWerewolf(Agent agent) {
 		// agentのroleProbを，狼1, 残りを0にする
 		for (Role role : Role.values()) {
@@ -131,6 +242,20 @@ public class WerewolfPlayer extends BasePlayer {
 	}
 
 	/**
+	 * 狼リストを返す．fakeCoRolesをもとに算出するため，機能するのは1日目以降
+	 * 
+	 * @return
+	 */
+	private List<Agent> getWerewolfs() {
+		return Arrays.asList(this.latestGameInfo.getAgentList().stream()
+				.filter(x -> this.fakeCoRoles[x.getAgentIdx() - 1] != null).toArray(Agent[]::new));
+	}
+
+	private void handleWAttack(Agent agent, Content content) {
+		this.nextAttackedAgents[agent.getAgentIdx() - 1] = content.getTarget();
+	}
+
+	/**
 	 * 囁きのCO宣言をfakeCoRolesに反映する
 	 */
 	private void handleWComingout(Agent agent, Content content) {
@@ -152,6 +277,7 @@ public class WerewolfPlayer extends BasePlayer {
 		case AGREE:
 			break;
 		case ATTACK:
+			handleWAttack(agent, content);
 			break;
 		case COMINGOUT:
 			handleWComingout(agent, content);
@@ -190,53 +316,8 @@ public class WerewolfPlayer extends BasePlayer {
 		// 狼固有のデータ構造の初期化
 		this.fakeCoRoles = new Role[gameSetting.getPlayerNum()];
 		Arrays.fill(this.fakeCoRoles, null);
-	}
-
-	/**
-	 * 偽の占いを実行し，結果を発話する．
-	 * ランダムで前日襲撃されたプレイヤーか，生きているプレイヤーからまだ占っていない人を対象として人間判定を出す
-	 */
-	private void actFakeSeer() {
-		if (this.latestGameInfo.getDay() == 0) {
-			// まだ占い結果は出せない
-			return;
-		}
-		Agent me = this.latestGameInfo.getAgent();
-		List<Agent> targets = Arrays.asList(this.latestGameInfo.getAliveAgentList().stream().filter(y -> !me.equals(y))
-				.filter(x -> this.talkMatrix[me.getAgentIdx() - 1][x.getAgentIdx() - 1][Topic.DIVINED.ordinal()] == 0)
-				.toArray(Agent[]::new));
-		if (targets.isEmpty()) {
-			// 全員占ったことがある-> 生きている人からランダムに人判定を出す
-			this.myTalks.addLast(new Content(new DivinedResultContentBuilder(
-					this.choiceAgent(this.latestGameInfo.getAliveAgentList()), Species.HUMAN)));
-		} else {
-			if (this.latestGameInfo.getAttackedAgent() == null) {
-				// 昨夜襲撃が失敗している -> 生きている人からランダムに人判定を出す
-				Agent target = this.choiceAgent(targets);
-				this.myTalks.addLast(new Content(new DivinedResultContentBuilder(target, Species.HUMAN)));
-			} else {
-				// 昨夜襲撃が成功 -> 襲撃した人に対して人判定を出す
-				this.myTalks.addLast(new Content(
-						new DivinedResultContentBuilder(this.latestGameInfo.getAttackedAgent(), Species.HUMAN)));
-			}
-		}
-	}
-
-	/**
-	 * 偽の霊媒師を実行し，結果を発話する．
-	 * 狼の場合，仲間がわかっているので真実を言うことができる
-	 */
-	private void actFakeMedium() {
-		Agent executedAgent = this.latestGameInfo.getExecutedAgent();
-		if (executedAgent != null) {
-			if (this.fakeCoRoles[executedAgent.getAgentIdx() - 1] != null) {
-				// 狼だったので，狼判定出す
-				this.myTalks.addLast(new Content(new IdentContentBuilder(executedAgent, Species.WEREWOLF)));
-			} else {
-				this.myTalks.addLast(new Content(new IdentContentBuilder(executedAgent, Species.HUMAN)));
-			}
-		}
-
+		this.nextAttackedAgents = new Agent[gameSetting.getPlayerNum()];
+		Arrays.fill(this.nextAttackedAgents, null);
 	}
 
 	/**
@@ -274,6 +355,13 @@ public class WerewolfPlayer extends BasePlayer {
 			}
 		}
 		// TODO: 襲撃予定の役職を決め，提案する
+		if (this.latestGameInfo.getDay() >= 1) {
+			if (!checkNextAttackedAgentStatus()) {
+				if (randomAction()) {
+					decideNextAttackedAgent();
+				}
+			}
+		}
 	}
 
 	/**
