@@ -23,9 +23,13 @@ public class BasePlayer implements Player {
 	// 日ごとのgameInfo
 	protected Map<Integer, GameInfo> gameInfos = new TreeMap<>();
 	// 最新のgameInfo
-	protected GameInfo latestGameInfo;
+	protected GameInfo latestGameInfo = null;
 	// 今回のゲームのgameSetting, initialize時にコピーし，後はそのまま
-	protected GameSetting gameSetting;
+	protected GameSetting gameSetting = null;
+	// 追放されたAgents
+	protected List<Agent> executedAgents = new ArrayList<>();
+	// 襲撃されたAgents
+	protected List<Agent> attackedAgents = new ArrayList<>();
 	// 処理した他プレイヤーの発話リスト
 	protected Deque<Talk> processedTalks = new ConcurrentLinkedDeque<>();
 	// 発話予定リスト．発話すれば順に消えていく
@@ -78,7 +82,22 @@ public class BasePlayer implements Player {
 
 	@Override
 	public void dayStart() {
-
+		// 襲撃されたAgentとAttackされたAgentを把握して記録する．
+		// 現在のルールでは狐と共有者がいないため，追放されずに死んだ == 狼に襲撃と判断することができる
+		if (this.latestGameInfo.getDay() >= 1) {
+			GameInfo preGameInfo = this.gameInfos.get(this.latestGameInfo.getDay() - 1);
+			List<Agent> deadAgents = Arrays.asList(preGameInfo.getAliveAgentList().stream()
+					.filter(x -> !this.latestGameInfo.getAliveAgentList().contains(x)).toArray(Agent[]::new));
+			if (!deadAgents.isEmpty()) {
+				for (Agent deadAgent : deadAgents) {
+					if (deadAgent.equals(this.latestGameInfo.getExecutedAgent())) {
+						this.executedAgents.add(deadAgent);
+					} else {
+						this.attackedAgents.add(deadAgent);
+					}
+				}
+			}
+		}
 	}
 
 	/**
@@ -311,6 +330,8 @@ public class BasePlayer implements Player {
 		// 前の情報を引き継がないようにするためクリア
 		this.gameInfos.clear();
 		this.processedTalks.clear();
+		this.executedAgents.clear();
+		this.attackedAgents.clear();
 
 		// 値のコピー
 		this.gameInfos.put(gameInfo.getDay(), gameInfo);
@@ -319,6 +340,19 @@ public class BasePlayer implements Player {
 		// 各役職の可能性の行列を作成する
 		this.rolePossibility = genRolePossibility(gameInfo, gameSetting);
 		this.talkMatrix = genTalkMatrix(gameInfo, gameSetting);
+	}
+
+	/**
+	 * ランダムでtrueかfalseを返す．ランダムで行動を決定するため
+	 * 
+	 * @return
+	 */
+	protected boolean randomAction() {
+		if (Math.random() < 0.5) {
+			return false;
+		} else {
+			return true;
+		}
 	}
 
 	protected void showRoleProbability() {
@@ -398,18 +432,5 @@ public class BasePlayer implements Player {
 	@Override
 	public String whisper() {
 		return null;
-	}
-
-	/**
-	 * ランダムでtrueかfalseを返す．ランダムで行動を決定するため
-	 * 
-	 * @return
-	 */
-	protected boolean randomAction() {
-		if (Math.random() < 0.5) {
-			return false;
-		} else {
-			return true;
-		}
 	}
 }
