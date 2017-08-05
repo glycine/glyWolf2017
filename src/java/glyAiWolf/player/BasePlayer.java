@@ -319,13 +319,10 @@ public class BasePlayer implements Player {
 		// 各役職の可能性の行列を作成する
 		this.rolePossibility = genRolePossibility(gameInfo, gameSetting);
 		this.talkMatrix = genTalkMatrix(gameInfo, gameSetting);
-
-		// デバッグ用の出力
-		this.showRoleProbability();
 	}
 
 	protected void showRoleProbability() {
-		if(this.latestGameInfo.getAgent().getAgentIdx() != 5){
+		if (this.latestGameInfo.getAgent().getAgentIdx() != 5) {
 			return;
 		}
 
@@ -373,6 +370,7 @@ public class BasePlayer implements Player {
 			this.processedTalks.addLast(talk);
 		}
 
+		// デバッグ用の出力
 		this.showRoleProbability();
 	}
 
@@ -400,5 +398,18 @@ public class BasePlayer implements Player {
 	@Override
 	public String whisper() {
 		return null;
+	}
+
+	/**
+	 * ランダムでtrueかfalseを返す．ランダムで行動を決定するため
+	 * 
+	 * @return
+	 */
+	protected boolean randomAction() {
+		if (Math.random() < 0.5) {
+			return false;
+		} else {
+			return true;
+		}
 	}
 }

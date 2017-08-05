@@ -18,4 +18,6 @@ public class VillagerPlayer extends BasePlayer {
 			this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()]++;
 		}
 	}
+	
+	
 }

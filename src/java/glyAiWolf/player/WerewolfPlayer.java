@@ -1,22 +1,37 @@
 package glyAiWolf.player;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
+import org.aiwolf.client.lib.ComingoutContentBuilder;
 import org.aiwolf.client.lib.Content;
 import org.aiwolf.client.lib.SkipContentBuilder;
 import org.aiwolf.common.data.Agent;
 import org.aiwolf.common.data.Role;
 import org.aiwolf.common.data.Talk;
 import org.aiwolf.common.net.GameInfo;
+import org.aiwolf.common.net.GameSetting;
 
 public class WerewolfPlayer extends BasePlayer {
 	// 処理した他狼の囁きリスト
 	protected Deque<Talk> processedWhispers = new ConcurrentLinkedDeque<>();
 	// 囁き予定リスト．囁けば順に消えていく
 	private Deque<Content> myWhispers = new ConcurrentLinkedDeque<>();
+	// 他の狼のfakeCO役職リスト．agentIndexで引く
+	private Role[] fakeCoRoles = null;
+
+	@Override
+	public void initialize(GameInfo gameInfo, GameSetting gameSetting) {
+		super.initialize(gameInfo, gameSetting);
+
+		// 狼固有のデータ構造の初期化
+		this.fakeCoRoles = new Role[gameSetting.getPlayerNum()];
+		Arrays.fill(this.fakeCoRoles, null);
+	}
 
 	@Override
 	public void dayStart() {
@@ -66,6 +81,7 @@ public class WerewolfPlayer extends BasePlayer {
 		case ATTACK:
 			break;
 		case COMINGOUT:
+			handleWComingout(agent, content);
 			break;
 		case DISAGREE:
 			break;
@@ -94,6 +110,14 @@ public class WerewolfPlayer extends BasePlayer {
 		}
 	}
 
+	/**
+	 * 発話と囁きの方針
+	 * 発話:
+	 * 
+	 * 囁き:
+	 * - 0日目: COの方針を議論する
+	 * - 1日目以降: 襲撃予定者を議論する
+	 */
 	@Override
 	public void update(GameInfo gameInfo) {
 		super.update(gameInfo);
@@ -109,6 +133,77 @@ public class WerewolfPlayer extends BasePlayer {
 			Talk whisper = newWhispers.pollFirst();
 			handleWhisper(whisper);
 			this.processedWhispers.addLast(whisper);
+		}
+
+		// 囁き生成
+		// TODO: CO予定の役職を決め，宣言する
+		if (this.latestGameInfo.getDay() == 0) {
+			if (!checkFakeCoStatus()) {
+				if (randomAction()) {
+					decideFakeCO();
+				}
+			}
+		}
+		// TODO: 襲撃予定の役職を決め，提案する
+	}
+
+	/**
+	 * fakeCoの状態をチェックする．
+	 * trueが返る状態: 自身のCO予定が何かしらの値が入っていて，他のfakeCO予定と重なっていない
+	 * 
+	 * @return
+	 */
+	private boolean checkFakeCoStatus() {
+		Agent me = this.latestGameInfo.getAgent();
+		if (this.fakeCoRoles[me.getAgentIdx() - 1] == null) {
+			return false;
+		}
+		for (Agent agent : this.latestGameInfo.getAgentList()) {
+			if (agent.getAgentIdx() == me.getAgentIdx()) {
+				continue;
+			}
+			if (this.fakeCoRoles[me.getAgentIdx() - 1].equals(this.fakeCoRoles[agent.getAgentIdx() - 1])) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * 囁きのCO宣言をfakeCoRolesに反映する
+	 */
+	private void handleWComingout(Agent agent, Content content) {
+		this.fakeCoRoles[agent.getAgentIdx() - 1] = content.getRole();
+	}
+
+	/**
+	 * 偽のCO役職を決定する
+	 */
+	private void decideFakeCO() {
+		Agent me = this.latestGameInfo.getAgent();
+		List<Role> otherCoRoles = new ArrayList<>();
+		for (Agent agent : this.latestGameInfo.getAliveAgentList()) {
+			if (agent.getAgentIdx() != me.getAgentIdx() && this.fakeCoRoles[agent.getAgentIdx() - 1] != null) {
+				otherCoRoles.add(this.fakeCoRoles[agent.getAgentIdx() - 1]);
+			}
+		}
+		if (otherCoRoles.isEmpty()) {
+			// co予定のroleがないので，占いCO予定とする
+			this.fakeCoRoles[me.getAgentIdx() - 1] = Role.SEER;
+			this.myWhispers.addLast(new Content(new ComingoutContentBuilder(me, Role.SEER)));
+		} else if (otherCoRoles.size() == 1) {
+			// 占いと霊媒のいずれかCO予定にないものをCO予定とする
+			if (!otherCoRoles.contains(Role.SEER)) {
+				this.fakeCoRoles[me.getAgentIdx() - 1] = Role.SEER;
+				this.myWhispers.addLast(new Content(new ComingoutContentBuilder(me, Role.SEER)));
+			} else if (!otherCoRoles.contains(Role.MEDIUM)) {
+				this.fakeCoRoles[me.getAgentIdx() - 1] = Role.MEDIUM;
+				this.myWhispers.addLast(new Content(new ComingoutContentBuilder(me, Role.MEDIUM)));
+			}
+		} else {
+			// COは他プレイヤーに任せ，村を装うこととする
+			this.fakeCoRoles[me.getAgentIdx() - 1] = Role.VILLAGER;
+			this.myWhispers.addLast(new Content(new ComingoutContentBuilder(me, Role.MEDIUM)));
 		}
 	}
 
