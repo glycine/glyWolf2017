@@ -34,6 +34,8 @@ public class BasePlayer implements Player {
 	protected Deque<Talk> processedTalks = new ConcurrentLinkedDeque<>();
 	// 発話予定リスト．発話すれば順に消えていく
 	protected Deque<Content> myTalks = new ConcurrentLinkedDeque<>();
+	// 次に投票する予定のAgent．agentIndexで引く
+	protected Agent[] nextVoteAgents = null;
 	// 各プレイヤーの各役職の可能性
 	protected double[][] rolePossibility;
 	// 各プレイヤーの各プレイヤーに対する行動行列
@@ -82,6 +84,9 @@ public class BasePlayer implements Player {
 
 	@Override
 	public void dayStart() {
+		// nextVoteAgentsをクリアする
+		Arrays.fill(this.nextVoteAgents, null);
+
 		// 襲撃されたAgentとAttackされたAgentを把握して記録する．
 		// 現在のルールでは狐と共有者がいないため，追放されずに死んだ == 狼に襲撃と判断することができる
 		if (this.latestGameInfo.getDay() >= 1) {
@@ -191,6 +196,7 @@ public class BasePlayer implements Player {
 
 	/**
 	 * Comingout発言の処理．
+	 * まず，各プレイヤーの投票候補に関するものがリセットされる(COによって結果が変わると想定)
 	 * <ol>
 	 * <li>村/狼サイドの役職中の可能性が集約される</li>
 	 * <li>もし可能性がない役職についてCOしている場合は狼サイドと判定</li>
@@ -200,7 +206,7 @@ public class BasePlayer implements Player {
 	 * 
 	 * @param content
 	 */
-	protected void handleComingout(Agent agent, Content content) {
+	protected void handleComingout(Agent agent, Content content) {		
 		int playerIndex = agent.getAgentIdx() - 1;
 		Role coRole = content.getRole();
 		List<Role> coTeamRoles = Arrays.asList(Arrays.asList(Role.values()).stream()
@@ -218,6 +224,10 @@ public class BasePlayer implements Player {
 			// 村人サイドの可能性がない->現在は狼の可能性が高いと判定する
 			this.rolePossibility[playerIndex][Role.WEREWOLF.ordinal()] += prob;
 		}
+
+		// 投票候補をリセット
+		Arrays.fill(this.nextVoteAgents, null);
+
 	}
 
 	/**
@@ -316,10 +326,15 @@ public class BasePlayer implements Player {
 		case SKIP:
 			break;
 		case VOTE:
+			this.handleVote(agent, content);
 			break;
 		default:
 			break;
 		}
+	}
+
+	protected void handleVote(Agent agent, Content content) {
+		this.nextVoteAgents[agent.getAgentIdx() - 1] = content.getTarget();
 	}
 
 	/**
@@ -338,6 +353,8 @@ public class BasePlayer implements Player {
 		this.latestGameInfo = gameInfo;
 		this.gameSetting = gameSetting.clone();
 		// 各役職の可能性の行列を作成する
+		this.nextVoteAgents = new Agent[gameSetting.getPlayerNum()];
+		Arrays.fill(this.nextVoteAgents, null);
 		this.rolePossibility = genRolePossibility(gameInfo, gameSetting);
 		this.talkMatrix = genTalkMatrix(gameInfo, gameSetting);
 	}
@@ -405,7 +422,7 @@ public class BasePlayer implements Player {
 		}
 
 		// デバッグ用の出力
-		this.showRoleProbability();
+		// this.showRoleProbability();
 	}
 
 	/**

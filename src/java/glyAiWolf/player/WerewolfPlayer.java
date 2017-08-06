@@ -13,6 +13,7 @@ import org.aiwolf.client.lib.DivinedResultContentBuilder;
 import org.aiwolf.client.lib.IdentContentBuilder;
 import org.aiwolf.client.lib.SkipContentBuilder;
 import org.aiwolf.client.lib.Topic;
+import org.aiwolf.client.lib.VoteContentBuilder;
 import org.aiwolf.common.data.Agent;
 import org.aiwolf.common.data.Role;
 import org.aiwolf.common.data.Species;
@@ -27,7 +28,7 @@ public class WerewolfPlayer extends BasePlayer {
 	private Deque<Content> myWhispers = new ConcurrentLinkedDeque<>();
 	// 他の狼のfakeCO役職リスト．agentIndexで引く
 	private Role[] fakeCoRoles = null;
-	// 次に襲撃するつもりのAgent
+	// 次に襲撃するつもりのAgent．agentIndexで引く
 	private Agent[] nextAttackedAgents = null;
 
 	/**
@@ -111,12 +112,38 @@ public class WerewolfPlayer extends BasePlayer {
 		return true;
 	}
 
+	/**
+	 * trueを返す条件:
+	 * - 自分のAttack先が決まっている
+	 * - 狼の間で投票先が一致している
+	 * 
+	 * @return
+	 */
 	private boolean checkNextAttackedAgentStatus() {
 		Agent me = this.latestGameInfo.getAgent();
 		if (this.nextAttackedAgents[me.getAgentIdx() - 1] == null) {
 			return false;
 		}
 		if (Arrays.asList(this.nextAttackedAgents).stream().filter(x -> x != null).distinct().count() != 1) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * trueを返す条件:
+	 * - 自分の投票先が決まっている
+	 * - 狼の間で投票先が一致している
+	 * 
+	 * @return
+	 */
+	private boolean checkNextVoteAgentsStatus() {
+		Agent me = this.latestGameInfo.getAgent();
+		if (this.nextVoteAgents[me.getAgentIdx() - 1] == null) {
+			return false;
+		}
+		if (this.getWerewolfs().stream().map(x -> this.nextVoteAgents[x.getAgentIdx() - 1]).filter(y -> y != null)
+				.distinct().count() != 1) {
 			return false;
 		}
 		return true;
@@ -164,19 +191,47 @@ public class WerewolfPlayer extends BasePlayer {
 			// co予定のroleがないので，占いCO予定とする
 			this.fakeCoRoles[me.getAgentIdx() - 1] = Role.SEER;
 			this.myWhispers.addLast(new Content(new ComingoutContentBuilder(me, Role.SEER)));
-		} else if (otherCoRoles.size() == 1) {
+		} else {
 			// 占いと霊媒のいずれかCO予定にないものをCO予定とする
 			if (!otherCoRoles.contains(Role.SEER)) {
+				// 占いはCOしておかないとまずいので，占いCO予定に入れる
 				this.fakeCoRoles[me.getAgentIdx() - 1] = Role.SEER;
 				this.myWhispers.addLast(new Content(new ComingoutContentBuilder(me, Role.SEER)));
-			} else if (!otherCoRoles.contains(Role.MEDIUM)) {
-				this.fakeCoRoles[me.getAgentIdx() - 1] = Role.MEDIUM;
-				this.myWhispers.addLast(new Content(new ComingoutContentBuilder(me, Role.MEDIUM)));
+			} else {
+				this.fakeCoRoles[me.getAgentIdx() - 1] = Role.VILLAGER;
+				this.myWhispers.addLast(new Content(new ComingoutContentBuilder(me, Role.VILLAGER)));
 			}
+		}
+	}
+
+	/**
+	 * 次の投票先を決定する．
+	 * 基本的に，他の狼と投票先を合わせる．
+	 */
+	private void decideNextVote() {
+		Agent me = this.latestGameInfo.getAgent();
+		// 他の狼プレイヤーの投票予定リストを作成する
+		List<Agent> targets = Arrays.asList(getWerewolfs().stream().filter(x -> x.getAgentIdx() != me.getAgentIdx())
+				.map(y -> this.nextVoteAgents[y.getAgentIdx() - 1]).filter(z -> z != null).toArray(Agent[]::new));
+		if (targets.isEmpty()) {
+			// 他の狼は襲撃予定を決めていない->自分で決めて，発案する
+			// 生きていて，狼サイドではなくて，占いの可能性が一番高いAgent
+			List<Agent> agents = Arrays.asList(this.latestGameInfo.getAliveAgentList().stream()
+					.filter(x -> !getWerewolfs().contains(x)).toArray(Agent[]::new));
+			Agent target = me;
+			for (Agent agent : agents) {
+				if (this.rolePossibility[target.getAgentIdx() - 1][Role.SEER
+						.ordinal()] <= this.rolePossibility[agent.getAgentIdx() - 1][Role.SEER.ordinal()]) {
+					target = agent;
+				}
+			}
+			this.nextVoteAgents[me.getAgentIdx() - 1] = target;
+			this.myTalks.addLast(new Content(new VoteContentBuilder(target)));
 		} else {
-			// COは他プレイヤーに任せ，村を装うこととする
-			this.fakeCoRoles[me.getAgentIdx() - 1] = Role.VILLAGER;
-			this.myWhispers.addLast(new Content(new ComingoutContentBuilder(me, Role.MEDIUM)));
+			// とりあえず，同調する
+			// TODO: 他の狼の投票先が問題ないかチェック
+			this.nextVoteAgents[me.getAgentIdx() - 1] = targets.get(0);
+			this.myTalks.addLast(new Content(new VoteContentBuilder(targets.get(0))));
 		}
 	}
 
@@ -310,6 +365,14 @@ public class WerewolfPlayer extends BasePlayer {
 	}
 
 	@Override
+	protected void handleComingout(Agent agent, Content content) {
+		super.handleComingout(agent, content);
+
+		// 襲撃先候補をリセット
+		Arrays.fill(this.nextAttackedAgents, null);
+	}
+
+	@Override
 	public void initialize(GameInfo gameInfo, GameSetting gameSetting) {
 		super.initialize(gameInfo, gameSetting);
 
@@ -323,6 +386,7 @@ public class WerewolfPlayer extends BasePlayer {
 	/**
 	 * 発話と囁きの方針
 	 * 発話:
+	 * - 1日目以降: 投票予定者を議論し，
 	 * 
 	 * 囁き:
 	 * - 0日目: COの方針を議論する
@@ -345,8 +409,18 @@ public class WerewolfPlayer extends BasePlayer {
 			this.processedWhispers.addLast(whisper);
 		}
 
+		// 発話生成
+		// 投票予定のAgentを決め，提案する
+		if (this.latestGameInfo.getDay() >= 1) {
+			if (!this.checkNextVoteAgentsStatus()) {
+				if (randomAction()) {
+					decideNextVote();
+				}
+			}
+		}
+
 		// 囁き生成
-		// TODO: CO予定の役職を決め，宣言する
+		// CO予定の役職を決め，宣言する
 		if (this.latestGameInfo.getDay() == 0) {
 			if (!checkFakeCoStatus()) {
 				if (randomAction()) {
@@ -354,7 +428,7 @@ public class WerewolfPlayer extends BasePlayer {
 				}
 			}
 		}
-		// TODO: 襲撃予定の役職を決め，提案する
+		// 襲撃予定の役職を決め，提案する
 		if (this.latestGameInfo.getDay() >= 1) {
 			if (!checkNextAttackedAgentStatus()) {
 				if (randomAction()) {
@@ -366,12 +440,19 @@ public class WerewolfPlayer extends BasePlayer {
 
 	/**
 	 * 投票対象のAgentを決める．
+	 * - すでに議論で決まっている場合はそれを
+	 * - 決まっていない場合
 	 * 1. 生きていて
 	 * 2. 狼ではなくて
 	 * 3. とりあえずランダム
 	 */
 	@Override
 	public Agent vote() {
+		Agent me = this.latestGameInfo.getAgent();
+		if (this.nextVoteAgents[me.getAgentIdx() - 1] != null) {
+			return this.nextVoteAgents[me.getAgentIdx() - 1];
+		}
+
 		List<Agent> targets = Arrays.asList(this.latestGameInfo.getAliveAgentList().stream()
 				.filter(x -> this.rolePossibility[x.getAgentIdx() - 1][Role.WEREWOLF.ordinal()] < 1.0)
 				.toArray(Agent[]::new));
