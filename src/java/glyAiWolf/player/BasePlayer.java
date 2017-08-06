@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import org.aiwolf.client.lib.Content;
 import org.aiwolf.client.lib.SkipContentBuilder;
 import org.aiwolf.client.lib.Topic;
+import org.aiwolf.client.lib.VoteContentBuilder;
 import org.aiwolf.common.data.Agent;
 import org.aiwolf.common.data.Player;
 import org.aiwolf.common.data.Role;
@@ -20,6 +21,8 @@ import org.aiwolf.common.net.GameInfo;
 import org.aiwolf.common.net.GameSetting;
 
 public class BasePlayer implements Player {
+	// ランダム行動する際の閾値．[0.0, 1)の値をとり，randomでこの値以下が出れば行動しない
+	public static final double RANDOMACTION_THRESHOLD = 0.25;
 	// 日ごとのgameInfo
 	protected Map<Integer, GameInfo> gameInfos = new TreeMap<>();
 	// 最新のgameInfo
@@ -66,6 +69,45 @@ public class BasePlayer implements Player {
 	@Override
 	public Agent attack() {
 		return null;
+	}
+
+	/**
+	 * trueを返す条件
+	 * - 自分の投票先が決まっている
+	 * - 自分の投票先が最大である
+	 * 
+	 * @return
+	 */
+	protected boolean checkNextVoteAgentsStatus() {
+		Agent me = this.latestGameInfo.getAgent();
+		if (this.nextVoteAgents[me.getAgentIdx() - 1] == null) {
+			return false;
+		}
+		// 投票表明先に出現するagents
+		List<Agent> targets = Arrays.asList(
+				Arrays.asList(this.nextVoteAgents).stream().filter(x -> x != null).distinct().toArray(Agent[]::new));
+		List<Long> counts = new ArrayList<>();
+		for (Agent target : targets) {
+			counts.add(Arrays.asList(this.nextVoteAgents).stream().filter(x -> x != null)
+					.filter(y -> y.getAgentIdx() == target.getAgentIdx()).count());
+		}
+
+		// 得票数が最大のtargetを取得する
+		Agent maxVotedAgent = null;
+		long maxVoteNum = -1L;
+		for (int i = 0; i < targets.size(); ++i) {
+			if (maxVoteNum < counts.get(i)) {
+				maxVoteNum = counts.get(i);
+				maxVotedAgent = targets.get(i);
+			}
+		}
+
+		// 得票数最大 != 自身の投票予定先でなければ問題あるとする
+		if (maxVotedAgent.getAgentIdx() != this.nextVoteAgents[me.getAgentIdx() - 1].getAgentIdx()) {
+			return false;
+		}
+
+		return true;
 	}
 
 	/**
@@ -206,7 +248,7 @@ public class BasePlayer implements Player {
 	 * 
 	 * @param content
 	 */
-	protected void handleComingout(Agent agent, Content content) {		
+	protected void handleComingout(Agent agent, Content content) {
 		int playerIndex = agent.getAgentIdx() - 1;
 		Role coRole = content.getRole();
 		List<Role> coTeamRoles = Arrays.asList(Arrays.asList(Role.values()).stream()
@@ -263,7 +305,6 @@ public class BasePlayer implements Player {
 				targetProb += this.rolePossibility[targetIndex][targetRole.ordinal()];
 			}
 			double opposeProb = 1.0 - targetProb;
-			double diff = Math.abs(targetProb - opposeProb);
 
 			for (Role targetRole : targetRoles) {
 				this.rolePossibility[targetIndex][targetRole.ordinal()] += opposeProb
@@ -365,7 +406,7 @@ public class BasePlayer implements Player {
 	 * @return
 	 */
 	protected boolean randomAction() {
-		if (Math.random() < 0.5) {
+		if (Math.random() < RANDOMACTION_THRESHOLD) {
 			return false;
 		} else {
 			return true;
@@ -421,15 +462,74 @@ public class BasePlayer implements Player {
 			this.processedTalks.addLast(talk);
 		}
 
+		// 発話生成
+		// 投票予定のAgentを決め，提案する
+		if (this.latestGameInfo.getDay() >= 1) {
+			if (!this.checkNextVoteAgentsStatus()) {
+				if (randomAction()) {
+					decideNextVote();
+				}
+			}
+		}
+
 		// デバッグ用の出力
 		// this.showRoleProbability();
 	}
 
 	/**
-	 * 投票行動．生きているAgentのうち，最も狼らしいAgentに投票する．
+	 * 次の投票先を決定する
+	 * * 誰も決めていないとき -> 自分で推測して決める
+	 * * だれかが投票先を決めているとき，自分視点で狼っぽければ同調する
+	 * * 狼っぽくなければ，自分で推測して決める
+	 */
+	protected void decideNextVote() {
+		Agent me = this.latestGameInfo.getAgent();
+		// 他のプレイヤーの投票予定リストを作成する．この段階で自分は抜かす
+		List<Agent> targets = Arrays.asList(
+				this.latestGameInfo.getAliveAgentList().stream().filter(x -> x.getAgentIdx() != me.getAgentIdx())
+						.map(y -> this.nextVoteAgents[y.getAgentIdx() - 1]).filter(z -> z != null)
+						.filter(w -> w.getAgentIdx() != me.getAgentIdx()).distinct().toArray(Agent[]::new));
+		if (targets.isEmpty()) {
+			// 他のプレイヤーはまだ投票予定を決めていない -> 自分で決めて発案する
+			// 生きていて，最も狼らしいAgent
+			List<Agent> agents = Arrays.asList(this.latestGameInfo.getAliveAgentList().stream()
+					.filter(x -> x.getAgentIdx() != me.getAgentIdx()).toArray(Agent[]::new));
+			Agent target = me;
+			double wolfProb = 0.0;
+			for (Agent agent : agents) {
+				if (this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()] > wolfProb) {
+					wolfProb = this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()];
+					target = agent;
+				}
+			}
+			this.nextVoteAgents[me.getAgentIdx() - 1] = target;
+			this.myTalks.addLast(new Content(new VoteContentBuilder(target)));
+		} else {
+			// targetsのうち最も狼らしいプレイヤーに投票する
+			Agent target = me;
+			double wolfProb = 0.0;
+			for (Agent agent : targets) {
+				if (this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()] > wolfProb) {
+					wolfProb = this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()];
+					target = agent;
+				}
+			}
+			this.nextVoteAgents[me.getAgentIdx() - 1] = target;
+			this.myTalks.addLast(new Content(new VoteContentBuilder(target)));
+		}
+	}
+
+	/**
+	 * 投票行動．
+	 * - すでに投票行動を決めているなら，それに投票
+	 * - 決まっていない場合は，生きているAgentのうち，最も狼らしいAgentに投票する．
 	 */
 	@Override
 	public Agent vote() {
+		Agent me = this.latestGameInfo.getAgent();
+		if (this.nextVoteAgents[me.getAgentIdx() - 1] != null) {
+			return this.nextVoteAgents[me.getAgentIdx() - 1];
+		}
 		List<Agent> aliveAgents = this.latestGameInfo.getAliveAgentList();
 		double wolfProb = 0.0;
 		Agent result = this.latestGameInfo.getAgent();

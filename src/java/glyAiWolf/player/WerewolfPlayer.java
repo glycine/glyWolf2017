@@ -137,7 +137,8 @@ public class WerewolfPlayer extends BasePlayer {
 	 * 
 	 * @return
 	 */
-	private boolean checkNextVoteAgentsStatus() {
+	@Override
+	protected boolean checkNextVoteAgentsStatus() {
 		Agent me = this.latestGameInfo.getAgent();
 		if (this.nextVoteAgents[me.getAgentIdx() - 1] == null) {
 			return false;
@@ -208,13 +209,13 @@ public class WerewolfPlayer extends BasePlayer {
 	 * 次の投票先を決定する．
 	 * 基本的に，他の狼と投票先を合わせる．
 	 */
-	private void decideNextVote() {
+	protected void decideNextVote() {
 		Agent me = this.latestGameInfo.getAgent();
 		// 他の狼プレイヤーの投票予定リストを作成する
 		List<Agent> targets = Arrays.asList(getWerewolfs().stream().filter(x -> x.getAgentIdx() != me.getAgentIdx())
 				.map(y -> this.nextVoteAgents[y.getAgentIdx() - 1]).filter(z -> z != null).toArray(Agent[]::new));
 		if (targets.isEmpty()) {
-			// 他の狼は襲撃予定を決めていない->自分で決めて，発案する
+			// 他の狼は投票予定を決めていない->自分で決めて，発案する
 			// 生きていて，狼サイドではなくて，占いの可能性が一番高いAgent
 			List<Agent> agents = Arrays.asList(this.latestGameInfo.getAliveAgentList().stream()
 					.filter(x -> !getWerewolfs().contains(x)).toArray(Agent[]::new));
