@@ -10,6 +10,7 @@ import org.aiwolf.client.lib.AttackContentBuilder;
 import org.aiwolf.client.lib.ComingoutContentBuilder;
 import org.aiwolf.client.lib.Content;
 import org.aiwolf.client.lib.DivinedResultContentBuilder;
+import org.aiwolf.client.lib.EstimateContentBuilder;
 import org.aiwolf.client.lib.IdentContentBuilder;
 import org.aiwolf.client.lib.SkipContentBuilder;
 import org.aiwolf.client.lib.Topic;
@@ -233,6 +234,31 @@ public class WerewolfPlayer extends BasePlayer {
 			// TODO: 他の狼の投票先が問題ないかチェック
 			this.nextVoteAgents[me.getAgentIdx() - 1] = targets.get(0);
 			this.myTalks.addLast(new Content(new VoteContentBuilder(targets.get(0))));
+		}
+	}
+
+	/**
+	 * 狼用の予想発話メソッド
+	 * 
+	 */
+	@Override
+	protected void estimateRoleMap() {
+		for (Agent werewolf : getWerewolfs()) {
+			if (!this.latestGameInfo.getAliveAgentList().contains(werewolf)) {
+				continue;
+			}
+			Role fakeCoRole = this.fakeCoRoles[werewolf.getAgentIdx() - 1];
+			if (fakeCoRole != null && Role.SEER.equals(fakeCoRole)) {
+				this.myTalks.addLast(new Content(new EstimateContentBuilder(werewolf, Role.SEER)));
+			}
+		}
+		List<Agent> agents = Arrays.asList(this.latestGameInfo.getAliveAgentList().stream()
+				.filter(x -> !getWerewolfs().contains(x)).toArray(Agent[]::new));
+		List<Role> assumedRole = Arrays.asList(agents.stream().map(x -> this.assumeRole(x)).toArray(Role[]::new));
+		for (int i = 0; i < agents.size(); ++i) {
+			if (assumedRole.equals(Role.WEREWOLF)) {
+				this.myTalks.addLast(new Content(new EstimateContentBuilder(agents.get(i), Role.WEREWOLF)));
+			}
 		}
 	}
 

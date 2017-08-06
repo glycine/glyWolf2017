@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.aiwolf.client.lib.ComingoutContentBuilder;
 import org.aiwolf.client.lib.Content;
+import org.aiwolf.client.lib.EstimateContentBuilder;
 import org.aiwolf.client.lib.DivinedResultContentBuilder;
 import org.aiwolf.client.lib.Topic;
 import org.aiwolf.common.data.Agent;
@@ -49,6 +50,25 @@ public class PossessedPlayer extends BasePlayer {
 			this.myTalks.addLast(divinedContent);
 			// 占った記録をつける
 			this.talkMatrix[me.getAgentIdx() - 1][divinedAgent.getAgentIdx() - 1][Topic.DIVINED.ordinal()]++;
+		}
+	}
+
+	/**
+	 * 狂人用の予想発話メソッド
+	 * 自分が占いといい，あと狼を推測して発話する
+	 */
+	@Override
+	protected void estimateRoleMap() {
+		Agent me = this.latestGameInfo.getAgent();
+		this.myTalks.addLast(new Content(new EstimateContentBuilder(this.latestGameInfo.getAgent(), Role.SEER)));
+		List<Agent> targets = Arrays.asList(this.latestGameInfo.getAliveAgentList().stream()
+				.filter(x -> x.getAgentIdx() != me.getAgentIdx()).toArray(Agent[]::new));
+		List<Role> assumedRoles = Arrays.asList(targets.stream().map(x -> this.assumeRole(x)).toArray(Role[]::new));
+		for (int i = 0; i < targets.size(); ++i) {
+			Role assumedRole = assumedRoles.get(i);
+			if (assumedRole.equals(Role.WEREWOLF)) {
+				this.myTalks.addLast(new Content(new EstimateContentBuilder(targets.get(i), assumedRole)));
+			}
 		}
 	}
 

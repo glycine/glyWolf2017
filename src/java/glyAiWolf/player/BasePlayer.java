@@ -9,6 +9,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 import org.aiwolf.client.lib.Content;
+import org.aiwolf.client.lib.EstimateContentBuilder;
 import org.aiwolf.client.lib.SkipContentBuilder;
 import org.aiwolf.client.lib.Topic;
 import org.aiwolf.client.lib.VoteContentBuilder;
@@ -21,8 +22,10 @@ import org.aiwolf.common.net.GameInfo;
 import org.aiwolf.common.net.GameSetting;
 
 public class BasePlayer implements Player {
-	// ランダム行動する際の閾値．[0.0, 1)の値をとり，randomでこの値以下が出れば行動しない
+	// ランダム行動する際の閾値．[0.0, 1.0)の値をとり，randomでこの値以下が出れば行動しない
 	public static final double RANDOMACTION_THRESHOLD = 0.25;
+	// 狼と判断する際の閾値．[0.0, 1.0)の値をとり，rolePossibilityがこの値以上であれば，狼っぽいと判断する
+	public static final double WEREWOLF_PROB_THRESHOLD = 0.7;
 	// 日ごとのgameInfo
 	protected Map<Integer, GameInfo> gameInfos = new TreeMap<>();
 	// 最新のgameInfo
@@ -43,6 +46,10 @@ public class BasePlayer implements Player {
 	protected double[][] rolePossibility;
 	// 各プレイヤーの各プレイヤーに対する行動行列
 	protected int[][][] talkMatrix;
+	// 各プレイヤー(役職持ち)の判別結果記録と検証用の行列
+	protected Species[][] verifyMatrix;
+	// estimate結果の発話済みフラグ
+	protected boolean saidEstimation = false;
 
 	/**
 	 * rolePossibility行列に基づいて，agentのRoleを推測するもの
@@ -128,6 +135,8 @@ public class BasePlayer implements Player {
 	public void dayStart() {
 		// nextVoteAgentsをクリアする
 		Arrays.fill(this.nextVoteAgents, null);
+		// estimate発言フラグをクリアする
+		this.saidEstimation = false;
 
 		// 襲撃されたAgentとAttackされたAgentを把握して記録する．
 		// 現在のルールでは狐と共有者がいないため，追放されずに死んだ == 狼に襲撃と判断することができる
@@ -141,8 +150,98 @@ public class BasePlayer implements Player {
 						this.executedAgents.add(deadAgent);
 					} else {
 						this.attackedAgents.add(deadAgent);
+						// attackされたagentはすべてHuman ->
+						// もしそのagentに対して狼判定を出したプレイヤーは嘘をついた->狼？
+						for (Agent agent : this.latestGameInfo.getAgentList()) {
+							if (this.verifyMatrix[agent.getAgentIdx() - 1][deadAgent.getAgentIdx() - 1] != null) {
+								if (!Species.HUMAN.equals(this.verifyMatrix[agent.getAgentIdx()-1][deadAgent.getAgentIdx()-1])){										
+									// 矛盾発生 -> agentは嘘をついていた？ (霊媒師が信じられることが前提)
+									Role[] villagerRoles = Arrays.asList(Role.values()).stream()
+											.filter(x -> x.getSpecies().equals(Species.HUMAN)).toArray(Role[]::new);
+									double prob = 0.0;
+									for (Role role : villagerRoles) {
+										prob += this.rolePossibility[agent.getAgentIdx() - 1][role.ordinal()];
+										this.rolePossibility[agent.getAgentIdx() - 1][role.ordinal()] = 0.0;
+									}
+									this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()] += prob;
+								}
+							}
+						}
 					}
 				}
+			}
+		}
+	}
+
+	/**
+	 * 次の投票先を決定する
+	 * * 誰も決めていないとき -> 自分で推測して決める
+	 * * だれかが投票先を決めているとき，自分視点で狼っぽければ同調する
+	 * * 狼っぽくなければ，自分で推測して決める
+	 */
+	protected void decideNextVote() {
+		Agent me = this.latestGameInfo.getAgent();
+		// 他のプレイヤーの投票予定リストを作成する．この段階で自分は抜かす
+		List<Agent> targets = Arrays.asList(
+				this.latestGameInfo.getAliveAgentList().stream().filter(x -> x.getAgentIdx() != me.getAgentIdx())
+						.map(y -> this.nextVoteAgents[y.getAgentIdx() - 1]).filter(z -> z != null)
+						.filter(w -> w.getAgentIdx() != me.getAgentIdx()).distinct().toArray(Agent[]::new));
+		if (targets.isEmpty()) {
+			// 他のプレイヤーはまだ投票予定を決めていない -> 自分で決めて発案する
+			// 生きていて，最も狼らしいAgent
+			List<Agent> agents = Arrays.asList(this.latestGameInfo.getAliveAgentList().stream()
+					.filter(x -> x.getAgentIdx() != me.getAgentIdx()).toArray(Agent[]::new));
+			Agent target = me;
+			double wolfProb = 0.0;
+			for (Agent agent : agents) {
+				if (this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()] > wolfProb) {
+					wolfProb = this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()];
+					target = agent;
+				}
+			}
+			this.nextVoteAgents[me.getAgentIdx() - 1] = target;
+			this.myTalks.addLast(new Content(new VoteContentBuilder(target)));
+		} else if (targets.size() == 1 && this.rolePossibility[targets.get(0).getAgentIdx() - 1][Role.WEREWOLF
+				.ordinal()] < WEREWOLF_PROB_THRESHOLD) {
+			// 候補は1つあるが，自分視点で狼らしくない -> 自分で決めて発案する
+			// 生きていて，最も狼らしいAgent
+			List<Agent> agents = Arrays.asList(this.latestGameInfo.getAliveAgentList().stream()
+					.filter(x -> x.getAgentIdx() != me.getAgentIdx()).toArray(Agent[]::new));
+			Agent target = me;
+			double wolfProb = 0.0;
+			for (Agent agent : agents) {
+				if (this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()] > wolfProb) {
+					wolfProb = this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()];
+					target = agent;
+				}
+			}
+			this.nextVoteAgents[me.getAgentIdx() - 1] = target;
+			this.myTalks.addLast(new Content(new VoteContentBuilder(target)));
+		} else {
+			// targetsのうち最も狼らしいプレイヤーに投票する
+			Agent target = me;
+			double wolfProb = 0.0;
+			for (Agent agent : targets) {
+				if (this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()] > wolfProb) {
+					wolfProb = this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()];
+					target = agent;
+				}
+			}
+			this.nextVoteAgents[me.getAgentIdx() - 1] = target;
+			this.myTalks.addLast(new Content(new VoteContentBuilder(target)));
+		}
+	}
+
+	/**
+	 * roleMapを推測し，発話する
+	 */
+	protected void estimateRoleMap() {
+		List<Agent> agents = this.latestGameInfo.getAliveAgentList();
+		List<Role> assumedRoles = Arrays.asList(agents.stream().map(x -> this.assumeRole(x)).toArray(Role[]::new));
+		for (int i = 0; i < agents.size(); ++i) {
+			Role assumedRole = assumedRoles.get(i);
+			if (assumedRole.equals(Role.SEER) || assumedRole.equals(Role.WEREWOLF)) {
+				this.myTalks.addLast(new Content(new EstimateContentBuilder(agents.get(i), assumedRole)));
 			}
 		}
 	}
@@ -269,6 +368,8 @@ public class BasePlayer implements Player {
 
 		// 投票候補をリセット
 		Arrays.fill(this.nextVoteAgents, null);
+		// estimate発言済みフラグをリセット
+		this.saidEstimation = false;
 
 	}
 
@@ -282,6 +383,9 @@ public class BasePlayer implements Player {
 	 * @param content
 	 */
 	protected void handleDevined(Agent agent, Content content) {
+		// とりあえず記録
+		this.verifyMatrix[agent.getAgentIdx() - 1][content.getTarget().getAgentIdx() - 1] = content.getResult();
+
 		int playerIndex = agent.getAgentIdx() - 1;
 		int targetIndex = content.getTarget().getAgentIdx() - 1;
 		Species species = content.getResult();
@@ -329,6 +433,25 @@ public class BasePlayer implements Player {
 		}
 	}
 
+	protected void handleIdentified(Agent identifier, Content content) {
+		for (Agent agent : this.latestGameInfo.getAgentList()) {
+			if (this.verifyMatrix[agent.getAgentIdx() - 1][content.getTarget().getAgentIdx() - 1] != null) {
+				if (!content.getResult()
+						.equals(this.verifyMatrix[agent.getAgentIdx() - 1][content.getTarget().getAgentIdx() - 1])) {
+					// 矛盾発生 -> agentは嘘をついていた？ (霊媒師が信じられることが前提)
+					Role[] villagerRoles = Arrays.asList(Role.values()).stream()
+							.filter(x -> x.getSpecies().equals(Species.HUMAN)).toArray(Role[]::new);
+					double prob = 0.0;
+					for (Role role : villagerRoles) {
+						prob += this.rolePossibility[agent.getAgentIdx() - 1][role.ordinal()];
+						this.rolePossibility[agent.getAgentIdx() - 1][role.ordinal()] = 0.0;
+					}
+					this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()] += prob;
+				}
+			}
+		}
+	}
+
 	/**
 	 * 他プレイヤーのtalkを処理する
 	 * 
@@ -353,12 +476,14 @@ public class BasePlayer implements Player {
 			this.handleDevined(agent, content);
 			break;
 		case ESTIMATE:
+			// 本来他人の推測を入れる
 			break;
 		case GUARD:
 			break;
 		case GUARDED:
 			break;
 		case IDENTIFIED:
+			this.handleIdentified(agent, content);
 			break;
 		case OPERATOR:
 			break;
@@ -388,6 +513,7 @@ public class BasePlayer implements Player {
 		this.processedTalks.clear();
 		this.executedAgents.clear();
 		this.attackedAgents.clear();
+		this.saidEstimation = false;
 
 		// 値のコピー
 		this.gameInfos.put(gameInfo.getDay(), gameInfo);
@@ -398,6 +524,10 @@ public class BasePlayer implements Player {
 		Arrays.fill(this.nextVoteAgents, null);
 		this.rolePossibility = genRolePossibility(gameInfo, gameSetting);
 		this.talkMatrix = genTalkMatrix(gameInfo, gameSetting);
+		this.verifyMatrix = new Species[gameSetting.getPlayerNum()][gameSetting.getPlayerNum()];
+		for (int i = 0; i < this.verifyMatrix.length; ++i) {
+			Arrays.fill(this.verifyMatrix[i], null);
+		}
 	}
 
 	/**
@@ -471,52 +601,16 @@ public class BasePlayer implements Player {
 				}
 			}
 		}
+		// 現在の狼予想と信じている占い師を発話する
+		if (this.latestGameInfo.getDay() >= 1) {
+			if (!this.saidEstimation) {
+				estimateRoleMap();
+				this.saidEstimation = true;
+			}
+		}
 
 		// デバッグ用の出力
 		// this.showRoleProbability();
-	}
-
-	/**
-	 * 次の投票先を決定する
-	 * * 誰も決めていないとき -> 自分で推測して決める
-	 * * だれかが投票先を決めているとき，自分視点で狼っぽければ同調する
-	 * * 狼っぽくなければ，自分で推測して決める
-	 */
-	protected void decideNextVote() {
-		Agent me = this.latestGameInfo.getAgent();
-		// 他のプレイヤーの投票予定リストを作成する．この段階で自分は抜かす
-		List<Agent> targets = Arrays.asList(
-				this.latestGameInfo.getAliveAgentList().stream().filter(x -> x.getAgentIdx() != me.getAgentIdx())
-						.map(y -> this.nextVoteAgents[y.getAgentIdx() - 1]).filter(z -> z != null)
-						.filter(w -> w.getAgentIdx() != me.getAgentIdx()).distinct().toArray(Agent[]::new));
-		if (targets.isEmpty()) {
-			// 他のプレイヤーはまだ投票予定を決めていない -> 自分で決めて発案する
-			// 生きていて，最も狼らしいAgent
-			List<Agent> agents = Arrays.asList(this.latestGameInfo.getAliveAgentList().stream()
-					.filter(x -> x.getAgentIdx() != me.getAgentIdx()).toArray(Agent[]::new));
-			Agent target = me;
-			double wolfProb = 0.0;
-			for (Agent agent : agents) {
-				if (this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()] > wolfProb) {
-					wolfProb = this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()];
-					target = agent;
-				}
-			}
-			this.nextVoteAgents[me.getAgentIdx() - 1] = target;
-			this.myTalks.addLast(new Content(new VoteContentBuilder(target)));
-		} else {
-			// targetsのうち最も狼らしいプレイヤーに投票する
-			Agent target = me;
-			double wolfProb = 0.0;
-			for (Agent agent : targets) {
-				if (this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()] > wolfProb) {
-					wolfProb = this.rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()];
-					target = agent;
-				}
-			}
-			this.nextVoteAgents[me.getAgentIdx() - 1] = target;
-			this.myTalks.addLast(new Content(new VoteContentBuilder(target)));
-		}
 	}
 
 	/**
