@@ -179,16 +179,21 @@ public class WerewolfPlayer extends BasePlayer {
 	}
 
 	/**
-	 * 偽のCO役職を決定する
+	 * 偽のCO役職を決定する。
+	 * 変に役職COすると勝率が下がるので、とりあえず、村人を騙ることにする
 	 */
 	private void decideFakeCO() {
 		Agent me = this.latestGameInfo.getAgent();
 		List<Role> otherCoRoles = new ArrayList<>();
+		// 生きているエージェントのうち、自分以外の狼のCOを整理する
 		for (Agent agent : this.latestGameInfo.getAliveAgentList()) {
 			if (agent.getAgentIdx() != me.getAgentIdx() && this.fakeCoRoles[agent.getAgentIdx() - 1] != null) {
 				otherCoRoles.add(this.fakeCoRoles[agent.getAgentIdx() - 1]);
 			}
 		}
+		this.fakeCoRoles[me.getAgentIdx()-1] = Role.VILLAGER;
+		this.myWhispers.addLast(new Content(new ComingoutContentBuilder(me, Role.VILLAGER)));
+		/*
 		if (otherCoRoles.isEmpty()) {
 			// co予定のroleがないので，占いCO予定とする
 			this.fakeCoRoles[me.getAgentIdx() - 1] = Role.SEER;
@@ -203,7 +208,7 @@ public class WerewolfPlayer extends BasePlayer {
 				this.fakeCoRoles[me.getAgentIdx() - 1] = Role.VILLAGER;
 				this.myWhispers.addLast(new Content(new ComingoutContentBuilder(me, Role.VILLAGER)));
 			}
-		}
+		}*/
 	}
 
 	/**
