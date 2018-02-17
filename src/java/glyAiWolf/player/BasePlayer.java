@@ -543,7 +543,7 @@ public class BasePlayer implements Player {
 		}
 	}
 
-	protected void showRoleProbability() {
+	public void showRoleProbability() {
 		if (this.latestGameInfo.getAgent().getAgentIdx() != 5) {
 			return;
 		}
