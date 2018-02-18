@@ -193,22 +193,6 @@ public class WerewolfPlayer extends BasePlayer {
 		}
 		this.fakeCoRoles[me.getAgentIdx()-1] = Role.VILLAGER;
 		this.myWhispers.addLast(new Content(new ComingoutContentBuilder(me, Role.VILLAGER)));
-		/*
-		if (otherCoRoles.isEmpty()) {
-			// co予定のroleがないので，占いCO予定とする
-			this.fakeCoRoles[me.getAgentIdx() - 1] = Role.SEER;
-			this.myWhispers.addLast(new Content(new ComingoutContentBuilder(me, Role.SEER)));
-		} else {
-			// 占いと霊媒のいずれかCO予定にないものをCO予定とする
-			if (!otherCoRoles.contains(Role.SEER)) {
-				// 占いはCOしておかないとまずいので，占いCO予定に入れる
-				this.fakeCoRoles[me.getAgentIdx() - 1] = Role.SEER;
-				this.myWhispers.addLast(new Content(new ComingoutContentBuilder(me, Role.SEER)));
-			} else {
-				this.fakeCoRoles[me.getAgentIdx() - 1] = Role.VILLAGER;
-				this.myWhispers.addLast(new Content(new ComingoutContentBuilder(me, Role.VILLAGER)));
-			}
-		}*/
 	}
 
 	/**
