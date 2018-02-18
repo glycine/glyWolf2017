@@ -37,6 +37,7 @@ public class PossessedPlayer extends BasePlayer {
 		}
 		// 1日目以降は，偽の占い結果を出し続ける
 		if (this.latestGameInfo.getDay() >= 1) {
+			// 占い対象候補: 生きている人のうち、自分以外で、占っていない人。対象者がいない場合は
 			List<Agent> agents = Arrays.asList(
 					this.latestGameInfo.getAliveAgentList().stream().filter(x -> x.getAgentIdx() != me.getAgentIdx())
 							.filter(y -> this.talkMatrix[me.getAgentIdx() - 1][y.getAgentIdx() - 1][Topic.DIVINED
