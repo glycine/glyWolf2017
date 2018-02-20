@@ -18,9 +18,17 @@ import org.aiwolf.common.data.Player;
 import org.aiwolf.common.data.Role;
 import org.aiwolf.common.data.Species;
 import org.aiwolf.common.data.Talk;
+import org.aiwolf.common.data.Vote;
 import org.aiwolf.common.net.GameInfo;
 import org.aiwolf.common.net.GameSetting;
 
+/**
+ * 全てのプレイヤーのベースとなるクラス．
+ * roleProbabilityで役職を推定し，
+ * 
+ * @author "Haruhisa Ishida<haruhisa.ishida@gmail.com>"
+ *
+ */
 public class BasePlayer implements Player {
 	// ランダム行動する際の閾値．[0.0, 1.0)の値をとり，randomでこの値以下が出れば行動しない
 	public static final double RANDOMACTION_THRESHOLD = 0.25;
@@ -42,7 +50,7 @@ public class BasePlayer implements Player {
 	protected Deque<Content> myTalks = new ConcurrentLinkedDeque<>();
 	// 次に投票する予定のAgent．agentIndexで引く
 	protected Agent[] nextVoteAgents = null;
-	// 各プレイヤーの各役職の可能性
+	// 各プレイヤーの各役職の可能性．[agentIndex][roleIndex]で引く
 	protected double[][] rolePossibility;
 	// 各プレイヤーの各プレイヤーに対する行動行列
 	protected int[][][] talkMatrix;
@@ -50,6 +58,9 @@ public class BasePlayer implements Player {
 	protected Species[][] verifyMatrix;
 	// estimate結果の発話済みフラグ
 	protected boolean saidEstimation = false;
+	// 各プレイヤーの投票先記録．List<Integer>で表現。agentIndexで引く．agentIndexで格納する
+	protected List<Integer>[] voteResult = null;
+	protected double[][] voteDistance;
 
 	/**
 	 * rolePossibility行列に基づいて，agentのRoleを推測するもの
@@ -68,6 +79,24 @@ public class BasePlayer implements Player {
 			}
 		}
 		return result;
+	}
+
+	/**
+	 * 与えられたagentのSideを，自分のrolePossibilityに基づいて判別して返す.
+	 * 
+	 * @param agent
+	 * @return 村サイドであればRole.VILLAGERを，狼サイドであればRole.WEREWOLFを返す．
+	 */
+	protected Role assumeSide(Agent target) {
+		int taretIndex = target.getAgentIdx() - 1;
+		double wolfProbability = 0.0;
+		wolfProbability += this.rolePossibility[taretIndex][Role.WEREWOLF.ordinal()];
+		wolfProbability += this.rolePossibility[taretIndex][Role.POSSESSED.ordinal()];
+		if (wolfProbability >= 0.5) {
+			return Role.WEREWOLF;
+		} else {
+			return Role.VILLAGER;
+		}
 	}
 
 	/**
@@ -131,6 +160,10 @@ public class BasePlayer implements Player {
 		return agents.get(index);
 	}
 
+	/**
+	 * 1日の開始。
+	 * TODO: 投票先に応じて、村人らしい/狼らしいを判別する処理を追加したい
+	 */
 	@Override
 	public void dayStart() {
 		// nextVoteAgentsをクリアする
@@ -154,7 +187,8 @@ public class BasePlayer implements Player {
 						// もしそのagentに対して狼判定を出したプレイヤーは嘘をついた->狼？
 						for (Agent agent : this.latestGameInfo.getAgentList()) {
 							if (this.verifyMatrix[agent.getAgentIdx() - 1][deadAgent.getAgentIdx() - 1] != null) {
-								if (!Species.HUMAN.equals(this.verifyMatrix[agent.getAgentIdx()-1][deadAgent.getAgentIdx()-1])){										
+								if (!Species.HUMAN.equals(
+										this.verifyMatrix[agent.getAgentIdx() - 1][deadAgent.getAgentIdx() - 1])) {
 									// 矛盾発生 -> agentは嘘をついていた？ (霊媒師が信じられることが前提)
 									Role[] villagerRoles = Arrays.asList(Role.values()).stream()
 											.filter(x -> x.getSpecies().equals(Species.HUMAN)).toArray(Role[]::new);
@@ -169,6 +203,15 @@ public class BasePlayer implements Player {
 						}
 					}
 				}
+			}
+		}
+
+		// 投票結果を記録する
+		if (this.latestGameInfo.getVoteList() != null) {
+			for (Vote vote : this.latestGameInfo.getVoteList()) {
+				int agentIndex = vote.getAgent().getAgentIdx() - 1;
+				int targetIndex = vote.getTarget().getAgentIdx() - 1;
+				this.voteResult[agentIndex].add(targetIndex);
 			}
 		}
 	}
@@ -233,6 +276,14 @@ public class BasePlayer implements Player {
 	}
 
 	/**
+	 * BasePlayerでは実装しない
+	 */
+	@Override
+	public Agent divine() {
+		return null;
+	}
+
+	/**
 	 * roleMapを推測し，発話する
 	 */
 	protected void estimateRoleMap() {
@@ -244,14 +295,6 @@ public class BasePlayer implements Player {
 				this.myTalks.addLast(new Content(new EstimateContentBuilder(agents.get(i), assumedRole)));
 			}
 		}
-	}
-
-	/**
-	 * BasePlayerでは実装しない
-	 */
-	@Override
-	public Agent divine() {
-		return null;
 	}
 
 	@Override
@@ -320,6 +363,35 @@ public class BasePlayer implements Player {
 			}
 		}
 		return talkMatrix;
+	}
+
+	protected double[][] genVoteDistanceMatrix(GameSetting gameSetting) {
+		// 領域作成、 初期化
+		double[][] result = new double[gameSetting.getPlayerNum()][gameSetting.getPlayerNum()];
+		for (int i = 0; i < gameSetting.getPlayerNum(); ++i) {
+			for (int j = 0; j < gameSetting.getPlayerNum(); ++j) {
+				result[i][j] = 0.0;
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * 投票結果を格納するための領域作成、初期化
+	 * 
+	 * @param gameInfo
+	 * @param gameSetting
+	 * @return
+	 */
+	protected List<Integer>[] genVoteResults(GameSetting gameSetting) {
+		// 領域作成、初期化
+		@SuppressWarnings("unchecked")
+		List<Integer>[] result = new List[gameSetting.getPlayerNum()];
+		for (int i = 0; i < gameSetting.getPlayerNum(); ++i) {
+			result[i] = new ArrayList<Integer>();
+		}
+
+		return result;
 	}
 
 	@Override
@@ -433,6 +505,53 @@ public class BasePlayer implements Player {
 		}
 	}
 
+	/**
+	 * Estimate発話の処理．
+	 * 実装方針: roleのestimate結果が自分とどれだけあっているか．
+	 * 合っている -> 村サイドの可能性が高い
+	 * 合ってない -> 狼サイドの可能性が高い
+	 * 合っている/合ってないの判定手段は？ -> estimateのrole, targetをroleProbabilityと比較，
+	 * どう値を上下させる？ ->
+	 * 
+	 * @param agent
+	 * @param content
+	 */
+	protected void handleEstimate(Agent agent, Content content) {
+		Role myTargetEstimateSide = this.assumeSide(content.getTarget());
+
+		switch (content.getRole()) {
+		case BODYGUARD:
+		case MEDIUM:
+		case SEER:
+		case VILLAGER:
+		// 村サイド
+		{
+			if (myTargetEstimateSide.equals(Role.VILLAGER)) {
+				// 同意見
+			} else {
+				// 異なる意見
+			}
+		}
+			break;
+		case POSSESSED:
+		case WEREWOLF:
+		// 狼サイド
+		{
+			if (myTargetEstimateSide.equals(Role.WEREWOLF)) {
+				// 同意見
+			} else {
+				// 異なる意見
+			}
+		}
+			break;
+		case FOX:
+		case FREEMASON:
+		default:
+			// 使わない
+			break;
+		}
+	}
+
 	protected void handleIdentified(Agent identifier, Content content) {
 		for (Agent agent : this.latestGameInfo.getAgentList()) {
 			if (this.verifyMatrix[agent.getAgentIdx() - 1][content.getTarget().getAgentIdx() - 1] != null) {
@@ -528,6 +647,9 @@ public class BasePlayer implements Player {
 		for (int i = 0; i < this.verifyMatrix.length; ++i) {
 			Arrays.fill(this.verifyMatrix[i], null);
 		}
+		// 投票結果を記録するための配列確保
+		this.voteResult = this.genVoteResults(gameSetting);
+		this.voteDistance = this.genVoteDistanceMatrix(gameSetting);
 	}
 
 	/**
@@ -574,7 +696,8 @@ public class BasePlayer implements Player {
 	}
 
 	/**
-	 * 配信されるgameInfoを保存
+	 * 配信されるgameInfoを保存，
+	 * 新しく配信されたtalkを認識し，処理する
 	 */
 	@Override
 	public void update(GameInfo gameInfo) {
