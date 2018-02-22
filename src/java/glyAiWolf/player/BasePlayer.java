@@ -34,6 +34,8 @@ public class BasePlayer implements Player {
 	public static final double RANDOMACTION_THRESHOLD = 0.25;
 	// 狼と判断する際の閾値．[0.0, 1.0)の値をとり，rolePossibilityがこの値以上であれば，狼っぽいと判断する
 	public static final double WEREWOLF_PROB_THRESHOLD = 0.7;
+	// probabilityの最小値．これ以下の場合，確定とみなし，値をいじらないようにする
+	public static final double MIN_POSSIBILITY = 0.01;
 	// 日ごとのgameInfo
 	protected Map<Integer, GameInfo> gameInfos = new TreeMap<>();
 	// 最新のgameInfo
@@ -212,6 +214,29 @@ public class BasePlayer implements Player {
 				int agentIndex = vote.getAgent().getAgentIdx() - 1;
 				int targetIndex = vote.getTarget().getAgentIdx() - 1;
 				this.voteResult[agentIndex].add(targetIndex);
+			}
+		}
+	}
+
+	/**
+	 * 投票宣言と結果を比較する．
+	 * 一致していないAgentの狼度を上げる．
+	 * 新しい村人割合 -> 半分
+	 * 新しい人狼割合 ->
+	 * TODO: 狼度の変位割合
+	 * 一致している場合は何もしない
+	 * 
+	 * @param voteResult
+	 * @param voteDeclare
+	 */
+	protected void compareVoteDeclareAndResult(List<Vote> voteResults, Agent[] voteDeclare) {
+		for (Vote vote : voteResults) {
+			if (voteDeclare[vote.getAgent().getAgentIdx() - 1] != null) {
+				if (voteDeclare[vote.getAgent().getAgentIdx() - 1].getAgentIdx() != vote.getTarget().getAgentIdx()) {
+					// 投票結果が異なるので，rolePossibilityを変更する
+
+					//
+				}
 			}
 		}
 	}
@@ -505,51 +530,56 @@ public class BasePlayer implements Player {
 		}
 	}
 
-	/**
-	 * Estimate発話の処理．
-	 * 実装方針: roleのestimate結果が自分とどれだけあっているか．
-	 * 合っている -> 村サイドの可能性が高い
-	 * 合ってない -> 狼サイドの可能性が高い
-	 * 合っている/合ってないの判定手段は？ -> estimateのrole, targetをroleProbabilityと比較，
-	 * どう値を上下させる？ ->
-	 * 
-	 * @param agent
-	 * @param content
-	 */
 	protected void handleEstimate(Agent agent, Content content) {
-		Role myTargetEstimateSide = this.assumeSide(content.getTarget());
+		// estimateについては，村専用とするため，ここでは実装しない
+	}
 
-		switch (content.getRole()) {
-		case BODYGUARD:
-		case MEDIUM:
-		case SEER:
-		case VILLAGER:
-		// 村サイド
-		{
-			if (myTargetEstimateSide.equals(Role.VILLAGER)) {
-				// 同意見
-			} else {
-				// 異なる意見
+	/**
+	 * targetの村人の可能性を上げ，その分狼の確率を下げる．
+	 * 負の値を与えた場合，逆の効果．
+	 * ただし，村および狼の確率が負にはならないようにする．
+	 * また，狼および村の確率が1.0, 0.0の場合は値をいじらない: 確定情報をいじらない
+	 * 
+	 * @param target
+	 *            対象のAgent
+	 * @param value
+	 *            変位量
+	 * @return 値を変えたかどうか
+	 */
+	protected boolean addVillagerPossibility(Agent target, double value) {
+		double villagerPossibility = this.rolePossibility[target.getAgentIdx() - 1][Role.VILLAGER.ordinal()];
+		double werewolfPossibility = this.rolePossibility[target.getAgentIdx() - 1][Role.WEREWOLF.ordinal()];
+		if (villagerPossibility < MIN_POSSIBILITY || villagerPossibility + MIN_POSSIBILITY > 1.0) {
+			// 確定情報とみなし，変更しない
+			return false;
+		}
+		if (werewolfPossibility < MIN_POSSIBILITY || werewolfPossibility + MIN_POSSIBILITY > 1.0) {
+			// 確定情報とみなし，変更しない
+			return false;
+		}
+		villagerPossibility += value;
+		werewolfPossibility -= value;
+		// 加算と減算で区別して処理
+		if (value > 0.0) {
+			// 加算の場合の整合性チェック
+			if (villagerPossibility + MIN_POSSIBILITY > 1.0 || werewolfPossibility < MIN_POSSIBILITY) {
+				// 修正する
+				double delta = Math.max(villagerPossibility - (1.0 - MIN_POSSIBILITY),
+						MIN_POSSIBILITY - werewolfPossibility);
+				villagerPossibility -= delta;
+				werewolfPossibility += delta;
+			}
+		} else {
+			// 減算の場合の整合性チェック
+			if (villagerPossibility < MIN_POSSIBILITY || werewolfPossibility + MIN_POSSIBILITY > 1.0) {
+				// 修正する
+				double delta = Math.max(MIN_POSSIBILITY - villagerPossibility,
+						werewolfPossibility - (1.0 - MIN_POSSIBILITY));
+				villagerPossibility += delta;
+				werewolfPossibility -= delta;
 			}
 		}
-			break;
-		case POSSESSED:
-		case WEREWOLF:
-		// 狼サイド
-		{
-			if (myTargetEstimateSide.equals(Role.WEREWOLF)) {
-				// 同意見
-			} else {
-				// 異なる意見
-			}
-		}
-			break;
-		case FOX:
-		case FREEMASON:
-		default:
-			// 使わない
-			break;
-		}
+		return true;
 	}
 
 	protected void handleIdentified(Agent identifier, Content content) {
@@ -665,7 +695,7 @@ public class BasePlayer implements Player {
 		}
 	}
 
-	public void showRoleProbability() {
+	public void showRolePossibility() {
 		if (this.latestGameInfo.getAgent().getAgentIdx() != 5) {
 			return;
 		}
