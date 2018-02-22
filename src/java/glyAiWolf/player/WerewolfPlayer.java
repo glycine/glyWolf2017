@@ -47,6 +47,8 @@ public class WerewolfPlayer extends BasePlayer {
 			}
 		}
 	}
+	
+	
 
 	/**
 	 * 偽の占いを実行し，結果を発話する．
