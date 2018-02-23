@@ -18,7 +18,7 @@ import org.aiwolf.common.net.GameInfo;
  * @author "Haruhisa Ishida(haruhisa.ishida@gmail.com)"
  *
  */
-public class MediumPlayer extends BasePlayer {
+public class MediumPlayer extends VillagerPlayer {
 	private Set<Judge> mediumJudges = new HashSet<>();
 
 	@Override
