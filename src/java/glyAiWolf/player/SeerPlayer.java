@@ -20,7 +20,7 @@ import org.aiwolf.common.net.GameInfo;
  * @author "Haruhisa Ishida(haruhisa.ishida@gmail.com)"
  *
  */
-public class SeerPlayer extends VillagerPlayer {
+public class SeerPlayer extends BasePlayer {
 	private Set<Judge> seerJudges = new HashSet<>();
 
 	@Override

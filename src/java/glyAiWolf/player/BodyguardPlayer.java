@@ -16,7 +16,7 @@ import org.aiwolf.common.data.Role;
  * @author "Haruhisa Ishida(haruhisa.ishida@gmail.com)"
  *
  */
-public class BodyguardPlayer extends VillagerPlayer {
+public class BodyguardPlayer extends BasePlayer {
 	@Override
 	public void dayStart() {
 		super.dayStart();
