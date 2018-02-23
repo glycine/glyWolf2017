@@ -41,9 +41,9 @@ public class WerewolfPlayer extends BasePlayer {
 		if (executedAgent != null) {
 			if (this.fakeCoRoles[executedAgent.getAgentIdx() - 1] != null) {
 				// 狼だったので，狼判定出す
-				this.myTalks.addLast(new Content(new IdentContentBuilder(executedAgent, Species.WEREWOLF)));
+				this.myDeclare.addLast(new Content(new IdentContentBuilder(executedAgent, Species.WEREWOLF)));
 			} else {
-				this.myTalks.addLast(new Content(new IdentContentBuilder(executedAgent, Species.HUMAN)));
+				this.myDeclare.addLast(new Content(new IdentContentBuilder(executedAgent, Species.HUMAN)));
 			}
 		}
 	}
@@ -65,16 +65,16 @@ public class WerewolfPlayer extends BasePlayer {
 				.toArray(Agent[]::new));
 		if (targets.isEmpty()) {
 			// 全員占ったことがある-> 生きている人からランダムに人判定を出す
-			this.myTalks.addLast(new Content(new DivinedResultContentBuilder(
+			this.myDeclare.addLast(new Content(new DivinedResultContentBuilder(
 					this.choiceAgent(this.latestGameInfo.getAliveAgentList()), Species.HUMAN)));
 		} else {
 			if (this.latestGameInfo.getAttackedAgent() == null) {
 				// 昨夜襲撃が失敗している -> 生きている人からランダムに人判定を出す
 				Agent target = this.choiceAgent(targets);
-				this.myTalks.addLast(new Content(new DivinedResultContentBuilder(target, Species.HUMAN)));
+				this.myDeclare.addLast(new Content(new DivinedResultContentBuilder(target, Species.HUMAN)));
 			} else {
 				// 昨夜襲撃が成功 -> 襲撃した人に対して人判定を出す
-				this.myTalks.addLast(new Content(
+				this.myDeclare.addLast(new Content(
 						new DivinedResultContentBuilder(this.latestGameInfo.getAttackedAgent(), Species.HUMAN)));
 			}
 		}
@@ -163,7 +163,7 @@ public class WerewolfPlayer extends BasePlayer {
 		if (this.latestGameInfo.getDay() == 1) {
 			// fakeRoleは決まっているはずなので，偽役職のCOを行う
 			if (this.fakeCoRoles[me.getAgentIdx() - 1] != null) {
-				this.myTalks
+				this.myDeclare
 						.addLast(new Content(new ComingoutContentBuilder(me, this.fakeCoRoles[me.getAgentIdx() - 1])));
 				this.talkMatrix[me.getAgentIdx() - 1][me.getAgentIdx() - 1][Topic.COMINGOUT.ordinal()]++;
 			}
@@ -219,12 +219,12 @@ public class WerewolfPlayer extends BasePlayer {
 				}
 			}
 			this.nextVoteAgents[me.getAgentIdx() - 1] = target;
-			this.myTalks.addLast(new Content(new VoteContentBuilder(target)));
+			this.myDeclare.addLast(new Content(new VoteContentBuilder(target)));
 		} else {
 			// とりあえず，同調する
 			// TODO: 他の狼の投票先が問題ないかチェック
 			this.nextVoteAgents[me.getAgentIdx() - 1] = targets.get(0);
-			this.myTalks.addLast(new Content(new VoteContentBuilder(targets.get(0))));
+			this.myDeclare.addLast(new Content(new VoteContentBuilder(targets.get(0))));
 		}
 	}
 
@@ -240,7 +240,7 @@ public class WerewolfPlayer extends BasePlayer {
 			}
 			Role fakeCoRole = this.fakeCoRoles[werewolf.getAgentIdx() - 1];
 			if (fakeCoRole != null && Role.SEER.equals(fakeCoRole)) {
-				this.myTalks.addLast(new Content(new EstimateContentBuilder(werewolf, Role.SEER)));
+				this.myDeclare.addLast(new Content(new EstimateContentBuilder(werewolf, Role.SEER)));
 			}
 		}
 		List<Agent> agents = Arrays.asList(this.latestGameInfo.getAliveAgentList().stream()
@@ -248,7 +248,7 @@ public class WerewolfPlayer extends BasePlayer {
 		List<Role> assumedRole = Arrays.asList(agents.stream().map(x -> this.assumeRole(x)).toArray(Role[]::new));
 		for (int i = 0; i < agents.size(); ++i) {
 			if (assumedRole.equals(Role.WEREWOLF)) {
-				this.myTalks.addLast(new Content(new EstimateContentBuilder(agents.get(i), Role.WEREWOLF)));
+				this.myDeclare.addLast(new Content(new EstimateContentBuilder(agents.get(i), Role.WEREWOLF)));
 			}
 		}
 	}

@@ -23,6 +23,9 @@ import org.aiwolf.common.net.GameInfo;
 public class SeerPlayer extends BasePlayer {
 	private Set<Judge> seerJudges = new HashSet<>();
 
+	/**
+	 * 1日目に自分の役職をCOする
+	 */
 	@Override
 	public void dayStart() {
 		super.dayStart();
@@ -30,7 +33,7 @@ public class SeerPlayer extends BasePlayer {
 			Agent me = this.latestGameInfo.getAgent();
 			int myIndex = me.getAgentIdx() - 1;
 			Content content = new Content(new ComingoutContentBuilder(me, this.latestGameInfo.getRole()));
-			this.myTalks.add(content);
+			this.myDeclare.add(content);
 			this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()]++;
 		}
 	}
@@ -75,9 +78,8 @@ public class SeerPlayer extends BasePlayer {
 				continue;
 			}
 			Content content = new Content(new DivinedResultContentBuilder(target, result));
-			this.myTalks.add(content);
+			this.myDeclare.add(content);
 			this.talkMatrix[me.getAgentIdx() - 1][target.getAgentIdx() - 1][Topic.DIVINED.ordinal()]++;
 		}
 	}
-
 }

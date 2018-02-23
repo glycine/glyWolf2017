@@ -29,7 +29,7 @@ public class MediumPlayer extends BasePlayer {
 			// 自身の役職をCOする
 			int myIndex = me.getAgentIdx() - 1;
 			Content content = new Content(new ComingoutContentBuilder(me, this.latestGameInfo.getRole()));
-			this.myTalks.add(content);
+			this.myDeclare.add(content);
 			this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()]++;
 		}
 	}
@@ -57,7 +57,7 @@ public class MediumPlayer extends BasePlayer {
 				continue;
 			}
 			Content content = new Content(new IdentContentBuilder(target, result));
-			this.myTalks.add(content);
+			this.myDeclare.add(content);
 			this.talkMatrix[me.getAgentIdx() - 1][target.getAgentIdx() - 1][Topic.IDENTIFIED.ordinal()]++;
 		}
 	}

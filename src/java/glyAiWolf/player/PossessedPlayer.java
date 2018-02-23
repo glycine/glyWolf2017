@@ -33,7 +33,7 @@ public class PossessedPlayer extends BasePlayer {
 		// 1日目に，偽の占いCOをする
 		if (this.latestGameInfo.getDay() == 1) {
 			Content content = new Content(new ComingoutContentBuilder(me, Role.SEER));
-			this.myTalks.add(content);
+			this.myDeclare.add(content);
 		}
 		// 1日目以降は，偽の占い結果を出し続ける
 		if (this.latestGameInfo.getDay() >= 1) {
@@ -48,7 +48,7 @@ public class PossessedPlayer extends BasePlayer {
 				divinedAgent = me;
 			}
 			Content divinedContent = new Content(new DivinedResultContentBuilder(divinedAgent, Species.HUMAN));
-			this.myTalks.addLast(divinedContent);
+			this.myDeclare.addLast(divinedContent);
 			// 占った記録をつける
 			this.talkMatrix[me.getAgentIdx() - 1][divinedAgent.getAgentIdx() - 1][Topic.DIVINED.ordinal()]++;
 		}
@@ -61,14 +61,14 @@ public class PossessedPlayer extends BasePlayer {
 	@Override
 	protected void estimateRoleMap() {
 		Agent me = this.latestGameInfo.getAgent();
-		this.myTalks.addLast(new Content(new EstimateContentBuilder(this.latestGameInfo.getAgent(), Role.SEER)));
+		this.myDeclare.addLast(new Content(new EstimateContentBuilder(this.latestGameInfo.getAgent(), Role.SEER)));
 		List<Agent> targets = Arrays.asList(this.latestGameInfo.getAliveAgentList().stream()
 				.filter(x -> x.getAgentIdx() != me.getAgentIdx()).toArray(Agent[]::new));
 		List<Role> assumedRoles = Arrays.asList(targets.stream().map(x -> this.assumeRole(x)).toArray(Role[]::new));
 		for (int i = 0; i < targets.size(); ++i) {
 			Role assumedRole = assumedRoles.get(i);
 			if (assumedRole.equals(Role.WEREWOLF)) {
-				this.myTalks.addLast(new Content(new EstimateContentBuilder(targets.get(i), assumedRole)));
+				this.myDeclare.addLast(new Content(new EstimateContentBuilder(targets.get(i), assumedRole)));
 			}
 		}
 	}

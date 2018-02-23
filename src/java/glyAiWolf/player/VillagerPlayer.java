@@ -15,7 +15,7 @@ public class VillagerPlayer extends BasePlayer {
 			Agent me = this.latestGameInfo.getAgent();
 			int myIndex = me.getAgentIdx() - 1;
 			Content content = new Content(new ComingoutContentBuilder(me, this.latestGameInfo.getRole()));
-			this.myTalks.add(content);
+			this.myDeclare.add(content);
 			this.talkMatrix[myIndex][myIndex][Topic.COMINGOUT.ordinal()]++;
 		}
 	}

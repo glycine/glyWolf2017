@@ -23,7 +23,7 @@ public class BodyguardPlayer extends BasePlayer {
 		// 1日目に村人とCOする
 		if (this.latestGameInfo.getDay() == 1) {
 			Content content = new Content(new ComingoutContentBuilder(this.latestGameInfo.getAgent(), Role.VILLAGER));
-			this.myTalks.addLast(content);
+			this.myDeclare.addLast(content);
 		}
 	}
 

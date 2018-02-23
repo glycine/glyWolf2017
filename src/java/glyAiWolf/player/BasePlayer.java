@@ -49,7 +49,9 @@ public class BasePlayer implements Player {
 	// 処理した他プレイヤーの発話リスト
 	protected Deque<Talk> processedTalks = new ConcurrentLinkedDeque<>();
 	// 発話予定リスト．発話すれば順に消えていく
-	protected Deque<Content> myTalks = new ConcurrentLinkedDeque<>();
+	protected Deque<Content> myDeclare = new ConcurrentLinkedDeque<>();
+	protected Deque<Content> myEstimate = new ConcurrentLinkedDeque<>();
+	protected Deque<Content> myVote = new ConcurrentLinkedDeque<>();
 	// 次に投票する予定のAgent．agentIndexで引く
 	protected Agent[] nextVoteAgents = null;
 	// 各プレイヤーの各役職の可能性．[agentIndex][roleIndex]で引く
@@ -248,6 +250,8 @@ public class BasePlayer implements Player {
 	 * * 狼っぽくなければ，自分で推測して決める
 	 */
 	protected void decideNextVote() {
+		// 投票発話をすでに決めていた場合，クリアする
+		this.myVote.clear();
 		Agent me = this.latestGameInfo.getAgent();
 		// 他のプレイヤーの投票予定リストを作成する．この段階で自分は抜かす
 		List<Agent> targets = Arrays.asList(
@@ -268,7 +272,7 @@ public class BasePlayer implements Player {
 				}
 			}
 			this.nextVoteAgents[me.getAgentIdx() - 1] = target;
-			this.myTalks.addLast(new Content(new VoteContentBuilder(target)));
+			this.myVote.addLast(new Content(new VoteContentBuilder(target)));
 		} else if (targets.size() == 1 && this.rolePossibility[targets.get(0).getAgentIdx() - 1][Role.WEREWOLF
 				.ordinal()] < WEREWOLF_PROB_THRESHOLD) {
 			// 候補は1つあるが，自分視点で狼らしくない -> 自分で決めて発案する
@@ -284,7 +288,7 @@ public class BasePlayer implements Player {
 				}
 			}
 			this.nextVoteAgents[me.getAgentIdx() - 1] = target;
-			this.myTalks.addLast(new Content(new VoteContentBuilder(target)));
+			this.myVote.addLast(new Content(new VoteContentBuilder(target)));
 		} else {
 			// targetsのうち最も狼らしいプレイヤーに投票する
 			Agent target = me;
@@ -296,7 +300,7 @@ public class BasePlayer implements Player {
 				}
 			}
 			this.nextVoteAgents[me.getAgentIdx() - 1] = target;
-			this.myTalks.addLast(new Content(new VoteContentBuilder(target)));
+			this.myVote.addLast(new Content(new VoteContentBuilder(target)));
 		}
 	}
 
@@ -317,7 +321,7 @@ public class BasePlayer implements Player {
 		for (int i = 0; i < agents.size(); ++i) {
 			Role assumedRole = assumedRoles.get(i);
 			if (assumedRole.equals(Role.SEER) || assumedRole.equals(Role.WEREWOLF)) {
-				this.myTalks.addLast(new Content(new EstimateContentBuilder(agents.get(i), assumedRole)));
+				this.myDeclare.addLast(new Content(new EstimateContentBuilder(agents.get(i), assumedRole)));
 			}
 		}
 	}
@@ -713,16 +717,23 @@ public class BasePlayer implements Player {
 	}
 
 	/**
-	 * 発言処理．queueにたまった発言リストを処理．なくなればskipする
+	 * 発言処理．myDeclare->myVode->myEstimateの順にたまった発言リストを処理．なくなればskipする
 	 */
 	@Override
 	public String talk() {
-		if (this.myTalks.isEmpty()) {
+		if (!this.myDeclare.isEmpty()) {
+			Content declare = this.myDeclare.pop();
+			return declare.getText();
+		} else if (!this.myVote.isEmpty()) {
+			Content vote = this.myVote.pop();
+			return vote.getText();
+		} else if (!this.myEstimate.isEmpty()) {
+			Content estimate = this.myEstimate.pop();
+			return estimate.getText();
+		} else {
 			Content skip = new Content(new SkipContentBuilder());
 			return skip.toString();
 		}
-		Content content = this.myTalks.pop();
-		return content.getText();
 	}
 
 	/**
@@ -749,9 +760,7 @@ public class BasePlayer implements Player {
 		// 投票予定のAgentを決め，提案する
 		if (this.latestGameInfo.getDay() >= 1) {
 			if (!this.checkNextVoteAgentsStatus()) {
-				if (randomAction()) {
-					decideNextVote();
-				}
+				decideNextVote();
 			}
 		}
 		// 現在の狼予想と信じている占い師を発話する
