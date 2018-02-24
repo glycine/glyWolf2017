@@ -89,7 +89,7 @@ public class GlyPlayer implements Player {
 
 	@Override
 	public Agent vote() {
-		player.showRolePossibility();
+		// player.showRolePossibility();
 		return player.vote();
 	}
 
