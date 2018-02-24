@@ -65,6 +65,8 @@ public class BasePlayer implements Player {
 	// 各プレイヤーの投票先記録．List<Integer>で表現。agentIndexで引く．agentIndexで格納する
 	protected List<Integer>[] voteResult = null;
 	protected double[][] voteDistance;
+	// talk時のskip count
+	protected int talkSkipCount = 0;
 
 	/**
 	 * rolePossibility行列に基づいて，agentのRoleを推測するもの
@@ -174,6 +176,8 @@ public class BasePlayer implements Player {
 		Arrays.fill(this.nextVoteAgents, null);
 		// estimate発言フラグをクリアする
 		this.saidEstimation = false;
+		// talkSkipCountを初期化する
+		this.talkSkipCount = 0;
 
 		// 襲撃されたAgentとAttackされたAgentを把握して記録する．
 		// 現在のルールでは狐と共有者がいないため，追放されずに死んだ == 狼に襲撃と判断することができる
@@ -313,6 +317,31 @@ public class BasePlayer implements Player {
 	}
 
 	/**
+	 * 最も
+	 * 
+	 * @param rolePossibility
+	 *            roleの可能性の行列
+	 * @return 最も狼らしいと思うAgent
+	 */
+	protected Agent estimateWerewolf(double[][] rolePossibility) {
+		List<Agent> agents = this.latestGameInfo.getAliveAgentList();
+		Agent me = this.latestGameInfo.getAgent();
+		double possibility = Double.MIN_VALUE;
+		Agent result = null;
+		for (Agent agent : agents) {
+			// 自分は飛ばす
+			if(agent.getAgentIdx() == me.getAgentIdx()) {
+				continue;
+			}
+			if (possibility < rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()]) {
+				possibility = rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()];
+				result = agent;
+			}
+		}
+		return result;
+	}
+
+	/**
 	 * roleMapを推測し，発話する
 	 */
 	protected void estimateRoleMap() {
@@ -321,7 +350,7 @@ public class BasePlayer implements Player {
 		for (int i = 0; i < agents.size(); ++i) {
 			Role assumedRole = assumedRoles.get(i);
 			if (assumedRole.equals(Role.SEER) || assumedRole.equals(Role.WEREWOLF)) {
-				this.myDeclare.addLast(new Content(new EstimateContentBuilder(agents.get(i), assumedRole)));
+				this.myEstimate.addLast(new Content(new EstimateContentBuilder(agents.get(i), assumedRole)));
 			}
 		}
 	}
@@ -667,6 +696,7 @@ public class BasePlayer implements Player {
 		this.executedAgents.clear();
 		this.attackedAgents.clear();
 		this.saidEstimation = false;
+		this.talkSkipCount = 0;
 
 		// 値のコピー
 		this.gameInfos.put(gameInfo.getDay(), gameInfo);
@@ -700,10 +730,6 @@ public class BasePlayer implements Player {
 	}
 
 	public void showRolePossibility() {
-		if (this.latestGameInfo.getAgent().getAgentIdx() != 5) {
-			return;
-		}
-
 		for (Role role : Role.values()) {
 			System.err.print(role + ", ");
 		}
@@ -721,6 +747,11 @@ public class BasePlayer implements Player {
 	 */
 	@Override
 	public String talk() {
+		if (this.talkSkipCount <= 1 && this.randomAction()) {
+			// Skipが許される状況においては，ランダムでskipを選択する
+			Content skip = new Content(new SkipContentBuilder());
+			return skip.toString();
+		}
 		if (!this.myDeclare.isEmpty()) {
 			Content declare = this.myDeclare.pop();
 			return declare.getText();
@@ -738,7 +769,8 @@ public class BasePlayer implements Player {
 
 	/**
 	 * 配信されるgameInfoを保存，
-	 * 新しく配信されたtalkを認識し，処理する
+	 * 新しく配信されたtalkを認識し，処理する．
+	 * また，更新情報に基づいてestimate情報をupdateする
 	 */
 	@Override
 	public void update(GameInfo gameInfo) {
@@ -763,11 +795,17 @@ public class BasePlayer implements Player {
 				decideNextVote();
 			}
 		}
-		// 現在の狼予想と信じている占い師を発話する
+
+		// 現在の狼予想を発話生成する．
+		// 過去の発話が発言されたときに限る
+		// TODO: ここで信じている占い師を発話すべきか
 		if (this.latestGameInfo.getDay() >= 1) {
-			if (!this.saidEstimation) {
-				estimateRoleMap();
-				this.saidEstimation = true;
+			if (this.myEstimate.isEmpty()) {
+				// 狼を推測して発話する
+				Agent assumeWerewolf = this.estimateWerewolf(this.rolePossibility);
+				if (assumeWerewolf != null) {
+					this.myEstimate.addLast(new Content(new EstimateContentBuilder(assumeWerewolf, Role.WEREWOLF)));
+				}
 			}
 		}
 
