@@ -39,30 +39,20 @@ public class VillagerPlayer extends BasePlayer {
 	@Override
 	protected void handleEstimate(Agent agent, Content content) {
 		Role myTargetEstimateSide = this.assumeSide(content.getTarget());
-		final double delta = 0.00;
+		final double delta = 0.02;
 		switch (content.getRole()) {
 		case BODYGUARD:
 		case MEDIUM:
 		case SEER:
 		case VILLAGER:
-		// 村サイドの意見
-		{
-			if (myTargetEstimateSide.equals(Role.VILLAGER)) {
-				// 同意見 -> 村との見立てを増やす
-				this.addVillagerPossibility(content.getTarget(), delta);
-			} else {
-				// 異なる意見 -> 狼との見立てを増やす
-				this.addVillagerPossibility(content.getTarget(), -1.0 * delta);
-			}
-		}
+		// 村サイドの意見に対しては，何もしない
 			break;
 		case POSSESSED:
 		case WEREWOLF:
 		// 狼サイド
 		{
 			if (myTargetEstimateSide.equals(Role.WEREWOLF)) {
-				// 同意見 -> 村との見立てを増やす
-				this.addVillagerPossibility(content.getTarget(), delta);
+				// 同意見に対しては何もしない
 			} else {
 				// 異なる意見 -> 狼との見立てを増やす
 				this.addVillagerPossibility(content.getTarget(), -1.0 * delta);
