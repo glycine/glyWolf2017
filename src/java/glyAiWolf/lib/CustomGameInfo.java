@@ -3,8 +3,10 @@ package glyAiWolf.lib;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
@@ -53,7 +55,7 @@ public class CustomGameInfo {
 	public Species[][] identResults;
 	// 各プレイヤーのVote宣言，[agentIndex][dayNum]で引く
 	public Agent[][] voteStates;
-	// 各プレイヤーのVoteの実際の結果．[agentIndex]で引く
+	// 各プレイヤーのVoteの実際の結果．[agentIndex][dayNum]で引く
 	public Agent[][] voteResults;
 	// 各プレイヤーのtalkの総カウントとtopicごとのカウント
 	// [agentIndex][dayNum][topicIndex]で引く
@@ -73,6 +75,22 @@ public class CustomGameInfo {
 		this.latestGameInfo = gameInfo;
 		this.currentDay = gameInfo.getDay();
 		initialize(gameSetting.getPlayerNum());
+	}
+
+	public Map<Agent, Integer> getVoteStatusCount(int day) {
+		Map<Agent, Integer> result = new HashMap<>();
+		for (Agent agent : this.latestGameInfo.getAgentList()) {
+			Agent voteTarget = this.voteStates[agent.getAgentIdx() - 1][day];
+			if (voteTarget != null) {
+				if (!result.containsKey(voteTarget)) {
+					result.put(voteTarget, 1);
+				} else {
+					result.put(voteTarget, result.get(voteTarget) + 1);
+				}
+			}
+		}
+
+		return result;
 	}
 
 	/**
@@ -375,7 +393,7 @@ public class CustomGameInfo {
 		}
 		while (!newVotes.isEmpty()) {
 			Vote vote = newVotes.pollFirst();
-			this.voteResults[vote.getAgent().getAgentIdx()][vote.getDay()] = vote.getTarget();
+			this.voteResults[vote.getAgent().getAgentIdx() - 1][vote.getDay()] = vote.getTarget();
 			this.votes.addLast(vote);
 		}
 	}
