@@ -22,6 +22,8 @@ import org.aiwolf.common.data.Vote;
 import org.aiwolf.common.net.GameInfo;
 import org.aiwolf.common.net.GameSetting;
 
+import glyAiWolf.lib.CustomGameInfo;
+
 /**
  * 全てのプレイヤーのベースとなるクラス．
  * roleProbabilityで役職を推定し，
@@ -36,6 +38,9 @@ public class BasePlayer implements Player {
 	public static final double WEREWOLF_PROB_THRESHOLD = 0.7;
 	// probabilityの最小値．これ以下の場合，確定とみなし，値をいじらないようにする
 	public static final double MIN_POSSIBILITY = 0.01;
+	// 自分用にcustomしたgameInfo
+	protected CustomGameInfo myGameInfo = null;
+
 	// 日ごとのgameInfo
 	protected Map<Integer, GameInfo> gameInfos = new TreeMap<>();
 	// 最新のgameInfo
@@ -56,6 +61,10 @@ public class BasePlayer implements Player {
 	protected Agent[] nextVoteAgents = null;
 	// 各プレイヤーの各役職の可能性．[agentIndex][roleIndex]で引く
 	protected double[][] rolePossibility;
+	// 各プレイヤーの占い結果，[agentIndex][agentIndex]で引く
+	protected Species[][] divineResults;
+	// 各プレイヤーのEstimate結果, [agentIndex][agentIndex]で引く
+	protected Role[][] estimateResults;
 	// 各プレイヤーの各プレイヤーに対する行動行列
 	protected int[][][] talkMatrix;
 	// 各プレイヤー(役職持ち)の判別結果記録と検証用の行列
@@ -172,6 +181,7 @@ public class BasePlayer implements Player {
 	 */
 	@Override
 	public void dayStart() {
+		this.myGameInfo.dayChange();
 		// nextVoteAgentsをクリアする
 		Arrays.fill(this.nextVoteAgents, null);
 		// estimate発言フラグをクリアする
@@ -330,7 +340,7 @@ public class BasePlayer implements Player {
 		Agent result = null;
 		for (Agent agent : agents) {
 			// 自分は飛ばす
-			if(agent.getAgentIdx() == me.getAgentIdx()) {
+			if (agent.getAgentIdx() == me.getAgentIdx()) {
 				continue;
 			}
 			if (possibility < rolePossibility[agent.getAgentIdx() - 1][Role.WEREWOLF.ordinal()]) {
@@ -690,6 +700,8 @@ public class BasePlayer implements Player {
 	 */
 	@Override
 	public void initialize(GameInfo gameInfo, GameSetting gameSetting) {
+		this.myGameInfo = new CustomGameInfo(gameInfo, gameSetting);
+
 		// 前の情報を引き継がないようにするためクリア
 		this.gameInfos.clear();
 		this.processedTalks.clear();
@@ -702,6 +714,18 @@ public class BasePlayer implements Player {
 		this.gameInfos.put(gameInfo.getDay(), gameInfo);
 		this.latestGameInfo = gameInfo;
 		this.gameSetting = gameSetting.clone();
+
+		// divineResults作成
+		this.divineResults = new Species[gameSetting.getPlayerNum()][gameSetting.getPlayerNum()];
+		for (int i = 0; i < gameSetting.getPlayerNum(); ++i) {
+			Arrays.fill(this.divineResults[i], null);
+		}
+		// estimateResuts作成
+		this.estimateResults = new Role[gameSetting.getPlayerNum()][gameSetting.getPlayerNum()];
+		for (int i = 0; i < gameSetting.getPlayerNum(); ++i) {
+			Arrays.fill(this.estimateResults[i], null);
+		}
+
 		// 各役職の可能性の行列を作成する
 		this.nextVoteAgents = new Agent[gameSetting.getPlayerNum()];
 		Arrays.fill(this.nextVoteAgents, null);
@@ -774,6 +798,8 @@ public class BasePlayer implements Player {
 	 */
 	@Override
 	public void update(GameInfo gameInfo) {
+		this.myGameInfo.update(gameInfo);
+
 		this.gameInfos.put(gameInfo.getDay(), gameInfo);
 		this.latestGameInfo = gameInfo;
 		Deque<Talk> newTalks = new ConcurrentLinkedDeque<>();
@@ -788,14 +814,30 @@ public class BasePlayer implements Player {
 			this.processedTalks.addLast(talk);
 		}
 
+		// updateの内容にしたがってtalkを生成する
+		this.genVoteTalk();
+		this.genEstimateTalk();
+		// デバッグ用の出力
+		// this.showRoleProbability();
+	}
+
+	/**
+	 * voteTalkを生成する
+	 */
+	protected void genVoteTalk() {
 		// 発話生成
 		// 投票予定のAgentを決め，提案する
-		if (this.latestGameInfo.getDay() >= 1) {
+		if (this.myGameInfo.currentDay >= 1) {
 			if (!this.checkNextVoteAgentsStatus()) {
 				decideNextVote();
 			}
 		}
+	}
 
+	/**
+	 * estimateTalkを生成する
+	 */
+	protected void genEstimateTalk() {
 		// 現在の狼予想を発話生成する．
 		// 過去の発話が発言されたときに限る
 		// TODO: ここで信じている占い師を発話すべきか
@@ -808,9 +850,6 @@ public class BasePlayer implements Player {
 				}
 			}
 		}
-
-		// デバッグ用の出力
-		// this.showRoleProbability();
 	}
 
 	/**

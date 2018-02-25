@@ -25,6 +25,7 @@ public class PossessedPlayer extends BasePlayer {
 	 * 日の開始の処理
 	 * 1日目以降： 占いCOの発話生成, 占い対象生成
 	 */
+	
 	@Override
 	public void dayStart() {
 		super.dayStart();
@@ -59,7 +60,7 @@ public class PossessedPlayer extends BasePlayer {
 	 * 自分が占いといい，あと狼を推測して発話する
 	 */
 	@Override
-	protected void estimateRoleMap() {
+	protected void genEstimateTalk() {
 		Agent me = this.latestGameInfo.getAgent();
 		this.myDeclare.addLast(new Content(new EstimateContentBuilder(this.latestGameInfo.getAgent(), Role.SEER)));
 		List<Agent> targets = Arrays.asList(this.latestGameInfo.getAliveAgentList().stream()
@@ -68,7 +69,7 @@ public class PossessedPlayer extends BasePlayer {
 		for (int i = 0; i < targets.size(); ++i) {
 			Role assumedRole = assumedRoles.get(i);
 			if (assumedRole.equals(Role.WEREWOLF)) {
-				this.myDeclare.addLast(new Content(new EstimateContentBuilder(targets.get(i), assumedRole)));
+				this.myEstimate.addLast(new Content(new EstimateContentBuilder(targets.get(i), assumedRole)));
 			}
 		}
 	}
@@ -76,7 +77,6 @@ public class PossessedPlayer extends BasePlayer {
 	@Override
 	public void update(GameInfo gameInfo) {
 		super.update(gameInfo);
-
 	}
 
 	/**
