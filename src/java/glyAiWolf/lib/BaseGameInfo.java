@@ -27,9 +27,9 @@ import org.aiwolf.common.net.GameSetting;
  * @author "Haruhisa Ishida<haruhisa.ishida@gmail.com>"
  *
  */
-public class CustomGameInfo {
+public class BaseGameInfo {
 	// ゲーム日数の最大値
-	private static final int MAX_DAY = 8;
+	private static final int MAX_DAY = 20;
 	public int currentDay;
 	// 襲撃されたAgents
 	public Set<Agent> attackedAgents;
@@ -58,8 +58,9 @@ public class CustomGameInfo {
 	// 各プレイヤーのVoteの実際の結果．[agentIndex][dayNum]で引く
 	public Agent[][] voteResults;
 	// 各プレイヤーのtalkの総カウントとtopicごとのカウント
+	// [agentIndex][dayNum]で引く
+	// public int totalTalkCount[][];
 	// [agentIndex][dayNum][topicIndex]で引く
-	public int totalTalkCount[][];
 	public int talkCount[][][];
 	// 最新のgameInfo
 	public GameInfo latestGameInfo;
@@ -70,11 +71,44 @@ public class CustomGameInfo {
 	// このゲームで観測されたvote
 	public Deque<Vote> votes;
 
-	public CustomGameInfo(GameInfo gameInfo, GameSetting gameSetting) {
+	public BaseGameInfo(GameInfo gameInfo, GameSetting gameSetting) {
 		this.gameSetting = gameSetting;
 		this.latestGameInfo = gameInfo;
 		this.currentDay = gameInfo.getDay();
 		initialize(gameSetting.getPlayerNum());
+	}
+
+	public Set<Agent> getSeersByDivineResults(Agent target, Species species) {
+		Set<Agent> result = new HashSet<>();
+		for (Agent agent : this.latestGameInfo.getAgentList()) {
+			Species divineResult = this.divineResults[agent.getAgentIdx() - 1][target.getAgentIdx() - 1];
+			if (divineResult != null && divineResult.equals(species)) {
+				result.add(agent);
+			}
+		}
+
+		return result;
+	}
+
+	public int getTalkCount(Agent agent, Integer day, Topic topic) {
+		int count = 0;
+		for (Agent talkAgent : this.latestGameInfo.getAgentList()) {
+			if (agent != null && talkAgent.getAgentIdx() != agent.getAgentIdx()) {
+				continue;
+			}
+			for (int i = 0; i <= this.currentDay; ++i) {
+				if (day != null && i != day) {
+					continue;
+				}
+				for (Topic talkTopic : Topic.values()) {
+					if (topic != null && !talkTopic.equals(topic)) {
+						continue;
+					}
+					count += this.talkCount[talkAgent.getAgentIdx() - 1][i][talkTopic.ordinal()];
+				}
+			}
+		}
+		return count;
 	}
 
 	public Map<Agent, Integer> getVoteStatusCount(int day) {
@@ -106,6 +140,8 @@ public class CustomGameInfo {
 	}
 
 	/**
+	 * 1人占い -> 黒出し
+	 * 2人以上占い -> 全員から黒出し
 	 * COしている占い全てから黒出しされているAgent
 	 * targetは, 占われている, 一部から占われている, 占われていない
 	 * 
@@ -114,22 +150,37 @@ public class CustomGameInfo {
 	public Set<Agent> getBlack() {
 		Set<Agent> seers = this.getCOAgents(Role.SEER);
 		Set<Agent> result = new HashSet<>();
-		for (Agent target : this.latestGameInfo.getAgentList()) {
-			List<Species> divineResults = new ArrayList<>();
-			for (Agent seer : seers) {
+		if (seers.isEmpty()) {
+			// COいない -> 無視
+			return result;
+		} else if (seers.size() == 1) {
+			// 占いが1人
+			Agent seer = seers.stream().findAny().get();
+			for (Agent target : this.latestGameInfo.getAliveAgentList()) {
 				Species divineResult = this.divineResults[seer.getAgentIdx() - 1][target.getAgentIdx() - 1];
-				if (divineResult != null) {
-					divineResults.add(divineResult);
-				}
-			}
-			if (divineResults.size() >= 2) {
-				if (!divineResults.contains(Species.HUMAN)) {
-					// 黒出しのみ
+				if (divineResult != null && Species.WEREWOLF.equals(divineResult)) {
 					result.add(target);
 				}
 			}
+			return result;
+		} else {
+			for (Agent target : this.latestGameInfo.getAgentList()) {
+				List<Species> divineResults = new ArrayList<>();
+				for (Agent seer : seers) {
+					Species divineResult = this.divineResults[seer.getAgentIdx() - 1][target.getAgentIdx() - 1];
+					if (divineResult != null) {
+						divineResults.add(divineResult);
+					}
+				}
+				if (divineResults.size() >= 2) {
+					if (!divineResults.contains(Species.HUMAN)) {
+						// 黒出しのみ
+						result.add(target);
+					}
+				}
+			}
+			return result;
 		}
-		return result;
 	}
 
 	/**
@@ -140,69 +191,113 @@ public class CustomGameInfo {
 	 */
 	public Set<Agent> getCOAgents(Role role) {
 		Set<Agent> result = new HashSet<>();
-		for (Agent agent : this.latestGameInfo.getAgentList()) {
-			Role coRole = this.coResults[agent.getAgentIdx() - 1];
-			if (role.equals(coRole)) {
-				result.add(agent);
+		if (role != null) {
+			for (Agent agent : this.latestGameInfo.getAgentList()) {
+				Role coRole = this.coResults[agent.getAgentIdx() - 1];
+				if (role.equals(coRole)) {
+					result.add(agent);
+				}
 			}
+			return result;
+		} else {
+			// COしていない人
+			for (Agent agent : this.latestGameInfo.getAgentList()) {
+				if (this.coResults[agent.getAgentIdx() - 1] == null) {
+					result.add(agent);
+				}
+			}
+			return result;
 		}
-		return result;
 	}
 
 	/**
-	 * 占い結果が1つのみ，あるいは白黒の両方がある人
+	 * 占いが1人 -> いない
+	 * 占いが2人以上 -> 占い結果が1つのみ，あるいは白黒の両方がある人
 	 * 
 	 * @return
 	 */
 	public Set<Agent> getGray() {
 		Set<Agent> seers = this.getCOAgents(Role.SEER);
 		Set<Agent> result = new HashSet<>();
-		for (Agent target : this.latestGameInfo.getAgentList()) {
-			List<Species> divineResults = new ArrayList<>();
-			for (Agent seer : seers) {
-				Species divineResult = this.divineResults[seer.getAgentIdx() - 1][target.getAgentIdx() - 1];
-				if (divineResult != null) {
-					divineResults.add(divineResult);
+		if (seers.size() <= 1) {
+			// 占いが0 -> 無視
+			return result;
+		} else {
+			for (Agent target : this.latestGameInfo.getAgentList()) {
+				List<Species> divineResults = new ArrayList<>();
+				for (Agent seer : seers) {
+					Species divineResult = this.divineResults[seer.getAgentIdx() - 1][target.getAgentIdx() - 1];
+					if (divineResult != null) {
+						divineResults.add(divineResult);
+					}
+				}
+				if (divineResults.size() == 1) {
+					result.add(target);
+				} else if (divineResults.size() >= 2) {
+					if (divineResults.contains(Species.HUMAN) && divineResults.contains(Species.WEREWOLF)) {
+						// 白黒両方ある
+						result.add(target);
+					}
 				}
 			}
-			if (divineResults.size() == 1) {
-				if (!divineResults.contains(Species.WEREWOLF)) {
-					// 黒出し1回
-					result.add(target);
-				}
-			} else if (divineResults.size() >= 2) {
-				if (divineResults.contains(Species.HUMAN) && divineResults.contains(Species.WEREWOLF)) {
-					// 白黒両方ある
-					result.add(target);
-				}
-			}
+			return result;
 		}
-		return result;
 	}
 
 	/**
-	 * 占い結果が複数あり黒出しが存在しないAgentを返す
+	 * 占いCOが1つの場合 -> 白だし
+	 * 占いCOが2つ以上 -> 占い結果が複数あり黒出しが存在しないAgentを返す
 	 * 
 	 * @return
 	 */
 	public Set<Agent> getWhite() {
 		Set<Agent> seers = this.getCOAgents(Role.SEER);
 		Set<Agent> result = new HashSet<>();
-		for (Agent target : this.latestGameInfo.getAgentList()) {
-			List<Species> divineResults = new ArrayList<>();
-			for (Agent seer : seers) {
+		if (seers.isEmpty()) {
+			// coがないので無視
+			return result;
+		} else if (seers.size() == 1) {
+			// 1人co
+			Agent seer = seers.stream().findAny().get();
+			for (Agent target : this.latestGameInfo.getAliveAgentList()) {
 				Species divineResult = this.divineResults[seer.getAgentIdx() - 1][target.getAgentIdx() - 1];
-				if (divineResult != null) {
-					divineResults.add(divineResult);
-				}
-			}
-			if (divineResults.size() >= 2) {
-				if (divineResults.contains(Species.WEREWOLF)) {
-					// 白出しのみ
+				if (divineResult != null && Species.HUMAN.equals(divineResult)) {
 					result.add(target);
 				}
 			}
+			return result;
+		} else {
+			for (Agent target : this.latestGameInfo.getAgentList()) {
+				List<Species> divineResults = new ArrayList<>();
+				for (Agent seer : seers) {
+					Species divineResult = this.divineResults[seer.getAgentIdx() - 1][target.getAgentIdx() - 1];
+					if (divineResult != null) {
+						divineResults.add(divineResult);
+					}
+				}
+				if (divineResults.size() >= 2) {
+					if (divineResults.contains(Species.WEREWOLF)) {
+						// 白出しのみ
+						result.add(target);
+					}
+				}
+			}
+			return result;
 		}
+	}
+
+	/**
+	 * 発話が少ない人を取りだす．voteとestimateが０の人
+	 * 
+	 * @return
+	 */
+	public Set<Agent> getSilents() {
+		List<Agent> aliveAgents = this.latestGameInfo.getAliveAgentList();
+		List<Agent> silentAgents = Arrays
+				.asList(aliveAgents.stream().filter(x -> this.getTalkCount(x, currentDay, Topic.ESTIMATE) == 0)
+						.filter(y -> this.getTalkCount(y, currentDay, Topic.VOTE) == 0).toArray(Agent[]::new));
+		Set<Agent> result = new HashSet<>();
+		result.addAll(silentAgents);
 		return result;
 	}
 
@@ -260,6 +355,23 @@ public class CustomGameInfo {
 		}
 	}
 
+	public Map<Agent, Integer> getDiviationRequestCounts() {
+		Map<Agent, Integer> result = new HashMap<>();
+		for (Agent target : this.latestGameInfo.getAliveAgentList()) {
+			int count = 0;
+			for (Agent agent : this.latestGameInfo.getAliveAgentList()) {
+				if (this.diviationRequests[agent.getAgentIdx() - 1][target.getAgentIdx() - 1]) {
+					count++;
+				}
+			}
+			if (count > 0) {
+				result.put(target, count);
+			}
+		}
+
+		return result;
+	}
+
 	private void initialize(int playerNum) {
 		this.currentDay = 0;
 		// attackedAgents
@@ -295,7 +407,7 @@ public class CustomGameInfo {
 			Arrays.fill(this.guardResults[i], null);
 		}
 		// identResults
-		this.identResults = new Species[playerNum][MAX_DAY];
+		this.identResults = new Species[playerNum][playerNum];
 		for (int i = 0; i < playerNum; ++i) {
 			Arrays.fill(this.identResults[i], null);
 		}
@@ -308,11 +420,6 @@ public class CustomGameInfo {
 		this.voteStates = new Agent[playerNum][MAX_DAY];
 		for (int i = 0; i < playerNum; ++i) {
 			Arrays.fill(this.voteStates[i], null);
-		}
-		// totalTalkCount
-		this.totalTalkCount = new int[playerNum][MAX_DAY];
-		for (int i = 0; i < playerNum; ++i) {
-			Arrays.fill(this.totalTalkCount[i], 0);
 		}
 		this.talkCount = new int[playerNum][MAX_DAY][Topic.values().length];
 		for (int i = 0; i < playerNum; ++i) {
@@ -372,7 +479,8 @@ public class CustomGameInfo {
 		// まず，新しくきたtalkを抽出する
 		Deque<Talk> newTalks = new ConcurrentLinkedDeque<>();
 		for (Talk talk : gameInfo.getTalkList()) {
-			if (this.talks.isEmpty() || !talk.equals(talks.getLast())) {
+
+			if (this.talks.isEmpty() || talk.getIdx() > this.talks.getLast().getIdx()) {
 				newTalks.addLast(talk);
 			}
 		}
@@ -381,18 +489,10 @@ public class CustomGameInfo {
 			Content content = new Content(talk.getText());
 			this.handleTalk(talk);
 			this.talks.addLast(talk);
-			this.totalTalkCount[talk.getAgent().getAgentIdx() - 1][talk.getDay()]++;
 			this.talkCount[talk.getAgent().getAgentIdx() - 1][talk.getDay()][content.getTopic().ordinal()]++;
 		}
 		// vote情報を反映する
-		Deque<Vote> newVotes = new ConcurrentLinkedDeque<>();
 		for (Vote vote : gameInfo.getLatestVoteList()) {
-			if (this.votes.isEmpty() || !vote.equals(this.votes.getLast())) {
-				newVotes.addLast(vote);
-			}
-		}
-		while (!newVotes.isEmpty()) {
-			Vote vote = newVotes.pollFirst();
 			this.voteResults[vote.getAgent().getAgentIdx() - 1][vote.getDay()] = vote.getTarget();
 			this.votes.addLast(vote);
 		}

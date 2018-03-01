@@ -51,12 +51,6 @@ public class GlyPlayer implements Player {
 		case BODYGUARD:
 			this.player = new BodyguardPlayer();
 			break;
-		case FOX:
-			this.player = new BasePlayer();
-			break;
-		case FREEMASON:
-			this.player = new BasePlayer();
-			break;
 		case MEDIUM:
 			this.player = new MediumPlayer();
 			break;
@@ -71,6 +65,8 @@ public class GlyPlayer implements Player {
 			this.player = new VillagerPlayer();
 			break;
 		case WEREWOLF:
+		case FOX:
+		case FREEMASON:
 			this.player = new WerewolfPlayer();
 			break;
 		}
