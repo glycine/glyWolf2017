@@ -30,12 +30,13 @@ import org.aiwolf.common.net.GameSetting;
 public class BaseGameInfo {
 	// ゲーム日数の最大値
 	private static final int MAX_DAY = 20;
+	// 現在の日にち
 	public int currentDay;
 	// 襲撃されたAgents
 	public Set<Agent> attackedAgents;
 	// 追放されたAgents
 	public Set<Agent> executedAgents;
-	// 各プレイヤーのCO結果, [agentIndex]で引く
+	// 各プレイヤーのCO結果, 最新のもののみ．[agentIndex]で引く
 	public Role[] coResults;
 	// 各プレイヤーに対して占いリクエストが誰からだれに出ているか．
 	// [agentIndex][taretIndex]で引き，あるときはtrue,
@@ -70,66 +71,72 @@ public class BaseGameInfo {
 	public Deque<Talk> talks;
 	// このゲームで観測されたvote
 	public Deque<Vote> votes;
+	// 公開情報に基づく役職の可能性
+	public double[][] roleProbability;
 
+	/**
+	 * コンストラクタ．
+	 * 
+	 * @param gameInfo
+	 * @param gameSetting
+	 */
 	public BaseGameInfo(GameInfo gameInfo, GameSetting gameSetting) {
 		this.gameSetting = gameSetting;
 		this.latestGameInfo = gameInfo;
 		this.currentDay = gameInfo.getDay();
-		initialize(gameSetting.getPlayerNum());
-	}
-
-	public Set<Agent> getSeersByDivineResults(Agent target, Species species) {
-		Set<Agent> result = new HashSet<>();
-		for (Agent agent : this.latestGameInfo.getAgentList()) {
-			Species divineResult = this.divineResults[agent.getAgentIdx() - 1][target.getAgentIdx() - 1];
-			if (divineResult != null && divineResult.equals(species)) {
-				result.add(agent);
-			}
-		}
-
-		return result;
-	}
-
-	public int getTalkCount(Agent agent, Integer day, Topic topic) {
-		int count = 0;
-		for (Agent talkAgent : this.latestGameInfo.getAgentList()) {
-			if (agent != null && talkAgent.getAgentIdx() != agent.getAgentIdx()) {
-				continue;
-			}
-			for (int i = 0; i <= this.currentDay; ++i) {
-				if (day != null && i != day) {
-					continue;
-				}
-				for (Topic talkTopic : Topic.values()) {
-					if (topic != null && !talkTopic.equals(topic)) {
-						continue;
-					}
-					count += this.talkCount[talkAgent.getAgentIdx() - 1][i][talkTopic.ordinal()];
-				}
-			}
-		}
-		return count;
-	}
-
-	public Map<Agent, Integer> getVoteStatusCount(int day) {
-		Map<Agent, Integer> result = new HashMap<>();
-		for (Agent agent : this.latestGameInfo.getAgentList()) {
-			Agent voteTarget = this.voteStates[agent.getAgentIdx() - 1][day];
-			if (voteTarget != null) {
-				if (!result.containsKey(voteTarget)) {
-					result.put(voteTarget, 1);
-				} else {
-					result.put(voteTarget, result.get(voteTarget) + 1);
-				}
-			}
-		}
-
-		return result;
+		initMembers(gameSetting.getPlayerNum());
+		this.roleProbability = this.initRolePossibility(gameInfo, gameSetting);
 	}
 
 	/**
-	 * 日の代わりに呼び出す.
-	 * request系の変数初期化
+	 * 各playerの各役職に対する可能性の行列を作成して返す
+	 * 
+	 */
+	private double[][] initRolePossibility(GameInfo gameInfo, GameSetting gameSetting) {
+		// 領域作成，初期化
+		double[][] rolePossibility = new double[gameSetting.getPlayerNum()][Role.values().length];
+		for (int i = 0; i < gameSetting.getPlayerNum(); ++i) {
+			for (int j = 0; j < Role.values().length; ++j) {
+				rolePossibility[i][j] = 0.0;
+			}
+		}
+
+		// 自分の役職は確定しているので，自分がその役職である確率を1とする
+		int myIndex = gameInfo.getAgent().getAgentIdx() - 1;
+		Role myRole = gameInfo.getRole();
+		rolePossibility[myIndex][myRole.ordinal()] = 1.0;
+
+		// ダブりを含めた，自分以外の役職のリストアップ
+		List<Role> otherRoles = new ArrayList<>();
+		for (Role role : Role.values()) {
+			if (!role.equals(myRole)) {
+				int roleNum = gameSetting.getRoleNum(role);
+				for (int i = 0; i < roleNum; ++i) {
+					otherRoles.add(role);
+				}
+			} else {
+				int otherRoleNum = gameSetting.getRoleNum(role) - 1;
+				for (int i = 0; i < otherRoleNum; ++i) {
+					otherRoles.add(role);
+				}
+			}
+		}
+		double base = 1.0 / (double) (otherRoles.size());
+		for (int i = 0; i < gameSetting.getPlayerNum(); ++i) {
+			if (i == myIndex) {
+				continue;
+			}
+			for (Role role : otherRoles) {
+				rolePossibility[i][role.ordinal()] += base;
+			}
+		}
+
+		return rolePossibility;
+	}
+
+	/**
+	 * 日付が変わったときに呼び出す.
+	 * request系の変数はその日の分しか管理しないので初期化する
 	 */
 	public void dayChange() {
 		int playerNum = this.gameSetting.getPlayerNum();
@@ -210,6 +217,23 @@ public class BaseGameInfo {
 		}
 	}
 
+	public Map<Agent, Integer> getDiviationRequestCounts() {
+		Map<Agent, Integer> result = new HashMap<>();
+		for (Agent target : this.latestGameInfo.getAliveAgentList()) {
+			int count = 0;
+			for (Agent agent : this.latestGameInfo.getAliveAgentList()) {
+				if (this.diviationRequests[agent.getAgentIdx() - 1][target.getAgentIdx() - 1]) {
+					count++;
+				}
+			}
+			if (count > 0) {
+				result.put(target, count);
+			}
+		}
+
+		return result;
+	}
+
 	/**
 	 * 占いが1人 -> いない
 	 * 占いが2人以上 -> 占い結果が1つのみ，あるいは白黒の両方がある人
@@ -242,6 +266,93 @@ public class BaseGameInfo {
 			}
 			return result;
 		}
+	}
+
+	public Set<Agent> getSeersByDivineResults(Agent target, Species species) {
+		Set<Agent> result = new HashSet<>();
+		for (Agent agent : this.latestGameInfo.getAgentList()) {
+			Species divineResult = this.divineResults[agent.getAgentIdx() - 1][target.getAgentIdx() - 1];
+			if (divineResult != null && divineResult.equals(species)) {
+				result.add(agent);
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * 発話が少ない人を取りだす．voteとestimateが０の人
+	 * 
+	 * @return
+	 */
+	public Set<Agent> getSilents() {
+		List<Agent> aliveAgents = this.latestGameInfo.getAliveAgentList();
+		List<Agent> silentAgents = Arrays
+				.asList(aliveAgents.stream().filter(x -> this.getTalkCount(x, currentDay, Topic.ESTIMATE) == 0)
+						.filter(y -> this.getTalkCount(y, currentDay, Topic.VOTE) == 0).toArray(Agent[]::new));
+		Set<Agent> result = new HashSet<>();
+		result.addAll(silentAgents);
+		return result;
+	}
+
+	public int getTalkCount(Agent agent, Integer day, Topic topic) {
+		int count = 0;
+		for (Agent talkAgent : this.latestGameInfo.getAgentList()) {
+			if (agent != null && talkAgent.getAgentIdx() != agent.getAgentIdx()) {
+				continue;
+			}
+			for (int i = 0; i <= this.currentDay; ++i) {
+				if (day != null && i != day) {
+					continue;
+				}
+				for (Topic talkTopic : Topic.values()) {
+					if (topic != null && !talkTopic.equals(topic)) {
+						continue;
+					}
+					count += this.talkCount[talkAgent.getAgentIdx() - 1][i][talkTopic.ordinal()];
+				}
+			}
+		}
+		return count;
+	}
+
+	/**
+	 * 生きているAgentのうち，投票宣言と投票結果が異なるAgent
+	 * 
+	 * @return
+	 */
+	public Set<Agent> getVoteIllegulars() {
+		Set<Agent> result = new HashSet<>();
+		for (Agent agent : this.latestGameInfo.getAliveAgentList()) {
+			for (int i = 0; i <= this.currentDay; ++i) {
+				Agent voteStatus = this.voteStates[agent.getAgentIdx() - 1][i];
+				Agent voteResult = this.voteResults[agent.getAgentIdx() - 1][i];
+				if (voteStatus != null && voteResult != null) {
+					if (!voteResult.equals(voteStatus)) {
+						// 投票先について，宣言と結果が異なる．
+						result.add(agent);
+					}
+				}
+			}
+		}
+
+		return result;
+	}
+
+	public Map<Agent, Integer> getVoteStatusCount(int day) {
+		Map<Agent, Integer> result = new HashMap<>();
+		for (Agent agent : this.latestGameInfo.getAgentList()) {
+			Agent voteTarget = this.voteStates[agent.getAgentIdx() - 1][day];
+			if (voteTarget != null) {
+				if (!result.containsKey(voteTarget)) {
+					result.put(voteTarget, 1);
+				} else {
+					result.put(voteTarget, result.get(voteTarget) + 1);
+				}
+			}
+		}
+
+		return result;
 	}
 
 	/**
@@ -284,21 +395,6 @@ public class BaseGameInfo {
 			}
 			return result;
 		}
-	}
-
-	/**
-	 * 発話が少ない人を取りだす．voteとestimateが０の人
-	 * 
-	 * @return
-	 */
-	public Set<Agent> getSilents() {
-		List<Agent> aliveAgents = this.latestGameInfo.getAliveAgentList();
-		List<Agent> silentAgents = Arrays
-				.asList(aliveAgents.stream().filter(x -> this.getTalkCount(x, currentDay, Topic.ESTIMATE) == 0)
-						.filter(y -> this.getTalkCount(y, currentDay, Topic.VOTE) == 0).toArray(Agent[]::new));
-		Set<Agent> result = new HashSet<>();
-		result.addAll(silentAgents);
-		return result;
 	}
 
 	private void handleTalk(Talk talk) {
@@ -355,24 +451,7 @@ public class BaseGameInfo {
 		}
 	}
 
-	public Map<Agent, Integer> getDiviationRequestCounts() {
-		Map<Agent, Integer> result = new HashMap<>();
-		for (Agent target : this.latestGameInfo.getAliveAgentList()) {
-			int count = 0;
-			for (Agent agent : this.latestGameInfo.getAliveAgentList()) {
-				if (this.diviationRequests[agent.getAgentIdx() - 1][target.getAgentIdx() - 1]) {
-					count++;
-				}
-			}
-			if (count > 0) {
-				result.put(target, count);
-			}
-		}
-
-		return result;
-	}
-
-	private void initialize(int playerNum) {
+	private void initMembers(int playerNum) {
 		this.currentDay = 0;
 		// attackedAgents
 		this.attackedAgents = new HashSet<>();
@@ -435,29 +514,6 @@ public class BaseGameInfo {
 	}
 
 	/**
-	 * 生きているAgentのうち，投票宣言と投票結果が異なるAgent
-	 * 
-	 * @return
-	 */
-	public Set<Agent> getVoteIllegulars() {
-		Set<Agent> result = new HashSet<>();
-		for (Agent agent : this.latestGameInfo.getAliveAgentList()) {
-			for (int i = 0; i <= this.currentDay; ++i) {
-				Agent voteStatus = this.voteStates[agent.getAgentIdx() - 1][i];
-				Agent voteResult = this.voteResults[agent.getAgentIdx() - 1][i];
-				if (voteStatus != null && voteResult != null) {
-					if (!voteResult.equals(voteStatus)) {
-						// 投票先について，宣言と結果が異なる．
-						result.add(agent);
-					}
-				}
-			}
-		}
-
-		return result;
-	}
-
-	/**
 	 * 配信された情報に基づいて保存データを更新
 	 * 
 	 * @param gameInfo
@@ -479,7 +535,6 @@ public class BaseGameInfo {
 		// まず，新しくきたtalkを抽出する
 		Deque<Talk> newTalks = new ConcurrentLinkedDeque<>();
 		for (Talk talk : gameInfo.getTalkList()) {
-
 			if (this.talks.isEmpty() || talk.getIdx() > this.talks.getLast().getIdx()) {
 				newTalks.addLast(talk);
 			}
